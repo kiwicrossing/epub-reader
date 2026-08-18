@@ -1,0 +1,16 @@
+.venv
+venv/
+env/
+ENV/
+
+env
+*.env
+
+/data/settings.json
+
+__pycache__/
+
+db.sqlite3
+*.sqlite3
+
+*.epub
