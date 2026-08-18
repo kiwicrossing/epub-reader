@@ -1,5 +1,6 @@
 
 import re
+import os
 from ebooklib import epub
 from ebooklib import ITEM_DOCUMENT
 
@@ -12,6 +13,8 @@ class EpubReader:
         self.file_path = file_path
 
         self.book = epub.read_epub(file_path)
+
+        cover_item = self.book.get_item_with_id("cover")
 
         self.title = self._extract_title()
 
@@ -33,6 +36,82 @@ class EpubReader:
             return metadata[0][0]
 
         return self.file_path
+
+    def extract_cover(self, output_dir):
+        """Extract and save the EPUB cover image."""
+
+        os.makedirs(
+            output_dir,
+            exist_ok=True
+        )
+
+        # Method 1: OPF metadata
+        cover_meta = self.book.get_metadata(
+            "OPF",
+            "cover"
+        )
+
+        if cover_meta:
+            cover_id = cover_meta[0][1].get(
+                "content"
+            )
+
+            if cover_id:
+                item = self.book.get_item_with_id(
+                    cover_id
+                )
+
+                if item:
+                    path = os.path.join(
+                        output_dir,
+                        f"{self.title}.jpg"
+                    )
+
+                    with open(path, "wb") as f:
+                        f.write(item.get_content())
+
+                    return path
+
+        # Method 2: Find image named "cover"
+        for item in self.book.get_items():
+
+            name = item.get_name().lower()
+
+            if (
+                "cover" in name
+                and
+                item.media_type.startswith(
+                    "image/"
+                )
+            ):
+                path = os.path.join(
+                    output_dir,
+                    f"{self.title}.jpg"
+                )
+
+                with open(path, "wb") as f:
+                    f.write(item.get_content())
+
+                return path
+
+        # Method 3: First image in the EPUB
+        for item in self.book.get_items():
+
+            if item.media_type.startswith(
+                "image/"
+            ):
+                path = os.path.join(
+                    output_dir,
+                    f"{self.title}.jpg"
+                )
+
+                with open(path, "wb") as f:
+                    f.write(item.get_content())
+
+                return path
+
+        return None
+
 
     def _is_chapter_title(self, title):
         """Return True if the title appears to be a chapter."""

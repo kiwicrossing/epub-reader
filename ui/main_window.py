@@ -1,12 +1,15 @@
 import math
+import shutil
+from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QListView,
     QDockWidget,
     QMainWindow,
     QMenu,
@@ -14,13 +17,24 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSplitter,
+    QStackedWidget,
+    QStyle,
     QToolBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtGui import QAction, QShortcut, QKeySequence
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QFont,
+    QIcon,
+    QKeySequence,
+    QPainter,
+    QPixmap,
+    QShortcut,
+)
 
 from models.library import LibraryModel
 from models.bookmarks import BookmarkModel
@@ -64,11 +78,21 @@ class MainWindow(QMainWindow):
 
     def _create_ui(self):
         """Create and configure all UI elements."""
-        toolbar = QToolBar()
-        self.addToolBar(toolbar)
+
+        #
+        # Toolbar
+        #
+        self.home_toolbar = QToolBar()
+        self.addToolBar(self.home_toolbar)
+
+        self.reader_toolbar = QToolBar()
+        self.addToolBar(self.reader_toolbar)
+
+        home_btn = QPushButton("Home")
+        open_btn = QPushButton("Open")
 
         # Top bar buttons.
-        open_btn = QPushButton("Open")
+        # open_btn = QPushButton("Open")
         next_chapter_btn = QPushButton("Next Chapter")
         prev_chapter_btn = QPushButton("Previous Chapter")
         next_page_btn = QPushButton("Next Page")
@@ -76,7 +100,9 @@ class MainWindow(QMainWindow):
         view_bookmarks_btn = QPushButton("Bookmarks")
         bookmark_btn = QPushButton("Add Bookmark")
 
+        #
         # Font dropdown
+        #
         font_btn = QToolButton()
         font_btn.setText("Font")
         font_btn.setPopupMode(QToolButton.InstantPopup)
@@ -97,16 +123,27 @@ class MainWindow(QMainWindow):
         font_menu.addAction(font_smaller_action)
         font_btn.setMenu(font_menu)
 
+        #
+        # Toolbar order
+        #
+        # toolbar.addWidget(open_btn)
+        # toolbar.addWidget(home_btn)
+        # toolbar.addWidget(open_btn)
+        self.home_toolbar.addWidget(home_btn)
+        self.home_toolbar.addWidget(open_btn)
+        self.reader_toolbar.addWidget(next_chapter_btn)
+        self.reader_toolbar.addWidget(prev_chapter_btn)
+        self.reader_toolbar.addWidget(next_page_btn)
+        self.reader_toolbar.addWidget(prev_page_btn)
+        self.reader_toolbar.addWidget(view_bookmarks_btn)
+        self.reader_toolbar.addWidget(bookmark_btn)
+        self.reader_toolbar.addWidget(font_btn)
 
-        toolbar.addWidget(open_btn)
-        toolbar.addWidget(next_chapter_btn)
-        toolbar.addWidget(prev_chapter_btn)
-        toolbar.addWidget(next_page_btn)
-        toolbar.addWidget(prev_page_btn)
-        toolbar.addWidget(view_bookmarks_btn)
-        toolbar.addWidget(bookmark_btn)
-        toolbar.addWidget(font_btn)
-
+        #
+        # Toolbar actions
+        #
+        # open_btn.clicked.connect(self.open_book)
+        home_btn.clicked.connect(self.show_home)
         open_btn.clicked.connect(self.open_book)
         next_chapter_btn.clicked.connect(self.next_chapter)
         prev_chapter_btn.clicked.connect(self.previous_chapter)
@@ -115,19 +152,56 @@ class MainWindow(QMainWindow):
         view_bookmarks_btn.clicked.connect(self.show_bookmarks)
         bookmark_btn.clicked.connect(self.add_bookmark)
 
+        #
+        # Home page
+        #
+        self.home_page = QWidget()
+        home_layout = QVBoxLayout(self.home_page)
+        library_title = QLabel("My Library")
+        library_title.setStyleSheet("""
+        QLabel {
+            font-size: 24px;
+            font-weight: bold;
+            padding: 12px;
+        }
+        """)
 
-        self.library_list = QListWidget()
-        self.library_list.itemDoubleClicked.connect(self.library_book_selected)
+        self.library_grid = QListWidget()
+
+        self.library_grid.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.library_grid.customContextMenuRequested.connect(self.show_library_context_menu)
+
+        # make covers look like tiles
+        self.library_grid.setViewMode(QListView.IconMode)
+        self.library_grid.setResizeMode(QListWidget.Adjust)
+        self.library_grid.setMovement(QListView.Static)
+        self.library_grid.setSpacing(25)
+        self.library_grid.setGridSize(QSize(180, 280))
+        self.library_grid.setWordWrap(True)
+
+        self.library_grid.setIconSize(QSize(150, 220))
+        self.library_grid.setSpacing(20)
+
+        self.library_grid.itemDoubleClicked.connect(self.library_book_selected)
+
+        home_layout.addWidget(library_title)
+        home_layout.addWidget(self.library_grid)
+
+        # self.library_list = QListWidget()
+        # self.library_list.itemDoubleClicked.connect(self.library_book_selected)
         self.bookmark_list = QListWidget()
 
         self.web_view = QWebEngineView()
         self.web_view.loadFinished.connect(self.calculate_pages)
 
-        # Dockable side panels.
-        self.library_dock = QDockWidget("Library")
-        self.library_dock.setWidget(self.library_list)
-        self.addDockWidget(Qt.LeftDockWidgetArea,self.library_dock)
+        # # Dockable side panels.
+        # self.library_dock = QDockWidget("Library")
+        # self.library_dock.setWidget(self.library_list)
+        # self.addDockWidget(Qt.LeftDockWidgetArea,self.library_dock)
 
+        #
+        # Reader widgets
+        #
         self.chapter_list = QListWidget()
         self.chapter_list.itemDoubleClicked.connect(self.chapter_selected)
         self.chapter_dock = QDockWidget("Chapters")
@@ -148,16 +222,14 @@ class MainWindow(QMainWindow):
             Qt.RightDockWidgetArea,
             self.bookmark_dock
         )
-        self.resizeDocks(
-            [self.library_dock, self.bookmark_dock],
-            [250, 180],
-            Qt.Horizontal
-        )
+
         self.bookmark_list.itemDoubleClicked.connect(self.bookmark_selected)
         self.bookmark_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.bookmark_list.customContextMenuRequested.connect(self.show_bookmark_context_menu)
 
+        #
         # Keyboard shortcuts for page navigation.
+        # 
         next_shortcut = QShortcut(QKeySequence(Qt.Key_Right),self)
         next_shortcut.activated.connect(self.next_page)
 
@@ -179,23 +251,25 @@ class MainWindow(QMainWindow):
         delete_shortcut = QShortcut(QKeySequence(Qt.Key_Delete),self.bookmark_list)
         delete_shortcut.activated.connect(self.delete_selected_bookmark)
 
+        #
+        # Reader page
+        #
         splitter = QSplitter()
         splitter.addWidget(self.web_view)
+        self.status_label = QLabel("Ready")
         splitter.setSizes([200, 800, 200])
 
-        container = QWidget()
-        layout = QVBoxLayout(container)
-        layout.addWidget(splitter, 1)
-
-        # Progress bar in footer.
-        footer = QWidget()
-        footer_layout = QHBoxLayout(footer)
-
-        self.status_label = QLabel("Ready")
+        # container = QWidget()
+        # layout = QVBoxLayout(container)
+        # layout.addWidget(splitter, 1)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setMaximumWidth(250)
+
+        footer = QWidget()
+        footer_layout = QHBoxLayout(footer)
+
         self.progress_bar.setStyleSheet("""
             QProgressBar {
                 border: 1px solid #bdb8aa;
@@ -213,9 +287,68 @@ class MainWindow(QMainWindow):
         footer_layout.addWidget(self.status_label)
         footer_layout.addWidget(self.progress_bar)
 
-        layout.addWidget(footer)
+        self.reader_page = QWidget()
+        reader_layout = QVBoxLayout(self.reader_page)
+        reader_layout.addWidget(splitter)
+        reader_layout.addWidget(footer)
 
-        self.setCentralWidget(container)
+        #
+        # Stacked pages
+        #
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.home_page)
+        self.stack.addWidget(self.reader_page)
+
+        self.setCentralWidget(self.stack)
+
+        # Hide docks
+        self.chapter_dock.hide()
+        self.front_matter_dock.hide()
+        self.bookmark_dock.hide()
+        self.reader_toolbar.hide()
+
+        #
+        # Start on the home page
+        #
+        self.stack.setCurrentWidget(self.home_page)
+
+    def show_home(self):
+        """Display the home page."""
+
+        self.stack.setCurrentWidget(
+            self.home_page
+        )
+
+        self.home_toolbar.show()
+        self.reader_toolbar.hide()
+
+        self.chapter_dock.hide()
+        self.front_matter_dock.hide()
+        self.bookmark_dock.hide()
+
+    def show_library_context_menu(
+        self,
+        position
+    ):
+        """Show the context menu for a book tile."""
+
+        item = self.library_grid.itemAt(position)
+
+        if item is None:
+            return
+
+        menu = QMenu(self)
+
+        replace_cover_action = menu.addAction(
+            "Replace Cover Image..."
+        )
+
+        action = menu.exec(
+            self.library_grid.mapToGlobal(position)
+        )
+
+        if action == replace_cover_action:
+            self.replace_book_cover(item)
 
     def display_html(self, content):
         """Display raw HTML content."""
@@ -264,6 +397,39 @@ class MainWindow(QMainWindow):
         """
 
         self.web_view.setHtml(html)
+
+    def create_placeholder_cover(
+        self,
+        title,
+        output_path
+    ):
+        """Generate a placeholder cover image."""
+
+        width = 300
+        height = 450
+
+        pixmap = QPixmap(width, height)
+        pixmap.fill(QColor("#405c7a"))
+        painter = QPainter(pixmap)
+        painter.setPen(QColor("white"))
+
+        font = QFont("Georgia", 18)
+        font.setBold(True)
+        painter.setFont(font)
+
+        painter.drawText(
+            pixmap.rect().adjusted(
+                20,
+                20,
+                -20,
+                -20
+            ),
+            Qt.AlignCenter | Qt.TextWordWrap,
+            title
+        )
+        painter.end()
+
+        pixmap.save(output_path)
 
     def resizeEvent(self, event):
         """Handle window resizing."""
@@ -353,14 +519,31 @@ class MainWindow(QMainWindow):
 
     def _load_library(self):
         """Populate the library pane with known books."""
-        self.library_list.clear()
+        self.library_grid.clear()
+
+        covers_dir = Path("covers")
+        covers_dir.mkdir(exist_ok=True)
 
         for book in self.library.get_books():
             item = QListWidgetItem(book["title"])
+            cover_path = book["cover_path"]
+
+            if ( cover_path and Path(cover_path).exists()):
+                item.setIcon(QIcon(cover_path))
+            else:
+                cover_path = covers_dir / f"placeholder_{book['id']}.png"
+
+                if not cover_path.exists():
+                    self.create_placeholder_cover(
+                        book["title"],
+                        str(cover_path)
+                    )
+                item.setIcon(QIcon(str(cover_path)))
 
             # Store the database ID with the list item.
             item.setData(Qt.UserRole,book["id"])
-            self.library_list.addItem(item)
+            item.setSizeHint(QSize(170, 260))
+            self.library_grid.addItem(item)
 
     def open_book(self):
         """Open a file picker and load the selected EPUB."""
@@ -379,11 +562,18 @@ class MainWindow(QMainWindow):
     def load_book(self, path):
         """Load a book and restore its saved reading position."""
         try:
+            self.chapter_dock.show()
+            self.front_matter_dock.show()
+            self.bookmark_dock.show()
+            self.home_toolbar.show()
+            self.reader_toolbar.show()
+            self.stack.setCurrentWidget(self.reader_page)
+
             self.reader = EpubReader(path)
 
             title = self.reader.title
-
-            book_id = self.library.add_book(path, title)
+            cover_path = self.reader.extract_cover("covers")
+            book_id = self.library.add_book(path, title, cover_path)
             self.current_book_id = book_id
 
             book = self.library.get_book(book_id)
@@ -490,6 +680,39 @@ class MainWindow(QMainWindow):
 
         self.show_current_page()
 
+    def replace_book_cover(self, item):
+        """Replace a book cover with a user-supplied PNG."""
+
+        import shutil
+
+        book_id = item.data(Qt.UserRole)
+
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Cover Image",
+            "",
+            "PNG Images (*.png, *jpg, *.jpeg, *.webp)"
+        )
+
+        if not filename:
+            return
+
+        covers_dir = Path("covers")
+        covers_dir.mkdir(exist_ok=True)
+
+        new_cover = covers_dir / f"user_{book_id}.png"
+
+        shutil.copy2(
+            filename,
+            new_cover
+        )
+
+        self.library.update_cover_path(
+            book_id,
+            str(new_cover)
+        )
+
+        self._load_library()
 
     def show_current_page(self):
         """Display the current page within the chapter."""
