@@ -503,10 +503,7 @@ class MainWindow(QMainWindow):
         self.back_matter_dock.hide()
         self.bookmark_dock.hide()
 
-    def show_library_context_menu(
-        self,
-        position
-    ):
+    def show_library_context_menu(self, position):
         """Show the context menu for a book tile."""
 
         item = self.library_grid.itemAt(position)
@@ -516,16 +513,26 @@ class MainWindow(QMainWindow):
 
         menu = QMenu(self)
 
-        replace_cover_action = menu.addAction(
-            "Replace Cover Image..."
-        )
+        open_action = menu.addAction("Open Book")
+        replace_cover_action = menu.addAction("Replace Cover Image...")
+
+        menu.addSeparator()
+
+        delete_action = menu.addAction("Delete from Library")
 
         action = menu.exec(
             self.library_grid.mapToGlobal(position)
         )
 
-        if action == replace_cover_action:
+        if action == open_action:
+            self.library_book_selected(item)
+
+        elif action == replace_cover_action:
             self.replace_book_cover(item)
+
+        elif action == delete_action:
+            self.delete_book_from_library(item)
+            
 
     def display_html(self, content):
         """Display raw HTML content."""
@@ -792,6 +799,127 @@ class MainWindow(QMainWindow):
 
         self.load_book(filename)
 
+    def delete_book_from_library(self, item):
+        """Remove a book and its associated data from the library."""
+
+        book_id = item.data(Qt.UserRole)
+        book = self.library.get_book(book_id)
+
+        if not book:
+            QMessageBox.warning(
+                self,
+                "Book Not Found",
+                "The selected book could not be found in the library."
+            )
+            return
+
+        title = book["title"]
+
+        reply = QMessageBox.question(
+            self,
+            "Delete Book",
+            (
+                f'Remove "{title}" from your library?\n\n'
+                "This will delete its saved reading progress, "
+                "bookmarks, and library cover image.\n\n"
+                "The original EPUB file will not be deleted."
+            ),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            cover_path = (
+                book["cover_path"]
+                if "cover_path" in book.keys()
+                else None
+            )
+
+            self.bookmarks.delete_bookmarks_for_book(book_id)
+
+            # Delete the book record.
+            self.library.delete_book(book_id)
+
+            # Delete only cover files managed by this application.
+            self.delete_managed_cover(cover_path)
+
+            # Clear the current reader state if this was the open book.
+            if self.current_book_id == book_id:
+                self.reader = None
+                self.current_book_id = None
+
+                self.current_page = 0
+                self.total_pages = 1
+
+                self.go_to_last_page = False
+                self.resize_progress = None
+
+                self.chapter_list.clear()
+                self.front_matter_list.clear()
+                self.back_matter_list.clear()
+                self.bookmark_list.clear()
+
+                self.status_label.setText("Ready")
+                self.progress_bar.setValue(0)
+
+                self.web_view.setHtml(
+                    """
+                    <html>
+                    <body style="background-color:#fef2f1;">
+                    </body>
+                    </html>
+                    """
+                )
+
+                self.show_home()
+                
+
+            # Prevent the deleted book from reopening next session.
+            settings = self.settings.load()
+
+            if settings.get("last_book_id") == book_id:
+                settings.pop("last_book_id", None)
+                self.settings.save(settings)
+
+            self._load_library()
+
+            QMessageBox.information(
+                self,
+                "Book Removed",
+                f'"{title}" was removed from your library.'
+            )
+
+        except Exception as ex:
+            traceback.print_exc()
+
+            QMessageBox.critical(
+                self,
+                "Delete Book Error",
+                f'Could not remove "{title}" from the library.\n\n{ex}'
+            )
+
+    def delete_managed_cover(self, cover_path):
+        """Delete a cover only if it is inside the application covers folder."""
+
+        if not cover_path:
+            return
+
+        cover = Path(cover_path)
+        covers_dir = Path("covers").resolve()
+
+        try:
+            resolved_cover = cover.resolve()
+            resolved_cover.relative_to(covers_dir)
+        except (ValueError, OSError):
+            # The cover is outside the application-managed covers folder.
+            return
+
+        if resolved_cover.is_file():
+            resolved_cover.unlink()
+
     def load_book(self, path):
         """Load a book and restore its saved reading position."""
         try:
@@ -881,6 +1009,8 @@ class MainWindow(QMainWindow):
 
     def calculate_pages(self):
         """Calculate the number of virtual pages in the current chapter."""
+        if not self.reader:
+            return
 
         self.web_view.page().runJavaScript(
             """
@@ -904,7 +1034,7 @@ class MainWindow(QMainWindow):
 
     def on_page_height(self, height):
         """Compute total pages from the rendered chapter height."""
-        if not height:
+        if not self.reader or not height:
             return
 
         page_height = self.get_page_height()
@@ -972,6 +1102,9 @@ class MainWindow(QMainWindow):
 
     def show_current_page(self):
         """Display the current page within the chapter."""
+        if not self.reader:
+            return
+
         page_height = self.get_page_height()
 
         # Scroll to the appropriate page offset.

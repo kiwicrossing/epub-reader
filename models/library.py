@@ -91,6 +91,19 @@ class LibraryModel:
 
         return row["id"]
 
+    def delete_book(self, book_id):
+        """Delete a book from the library database."""
+
+        self.conn.execute(
+            """
+            DELETE FROM books
+            WHERE id = ?
+            """,
+            (book_id,)
+        )
+
+        self.conn.commit()
+
     def get_books(self):
         return self.conn.execute(
             "SELECT * FROM books ORDER BY title"
