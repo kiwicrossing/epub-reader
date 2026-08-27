@@ -6,16 +6,18 @@ ENV/
 env
 *.env
 
-/data/
+data/
 covers/
 
 __pycache__/
+*.pyc
+
+.vscode/
+.idea/
 
 db.sqlite3
 *.sqlite3
-data/app.db
 *.db
-
 
 epubs/
 *.epub
