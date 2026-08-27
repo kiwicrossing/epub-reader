@@ -22,7 +22,9 @@ class LibraryModel:
             cover_path TEXT,
             last_chapter INTEGER DEFAULT 0,
             last_page INTEGER DEFAULT 0,
-            progress_percent INTEGER DEFAULT 0
+            progress_percent INTEGER DEFAULT 0,
+            pages_read INTEGER DEFAULT 0,
+            total_pages INTEGER DEFAULT 0
         )
         """)
 
@@ -40,6 +42,16 @@ class LibraryModel:
             self.conn.execute("""ALTER TABLE books ADD COLUMN progress_percent INTEGER DEFAULT 0""")
         except sqlite3.OperationalError:
             pass
+
+        try:
+            self.conn.execute("""ALTER TABLE books ADD COLUMN pages_read INTEGER DEFAULT 0""")
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            self.conn.execute("""ALTER TABLE books  ADD COLUMN total_pages INTEGER DEFAULT 0""")
+        except sqlite3.OperationalError:
+                pass
 
         self.conn.commit()
 
@@ -122,7 +134,9 @@ class LibraryModel:
         book_id,
         chapter,
         page,
-        progress_percent
+        progress_percent,
+        pages_read,
+        total_pages
     ):
         """Save reading position and overall progress."""
 
@@ -132,13 +146,17 @@ class LibraryModel:
             SET
                 last_chapter=?,
                 last_page=?,
-                progress_percent=?
+                progress_percent=?,
+                pages_read=?,
+                total_pages=?
             WHERE id=?
             """,
             (
                 chapter,
                 page,
                 progress_percent,
+                pages_read,
+                total_pages,
                 book_id
             ),
         )

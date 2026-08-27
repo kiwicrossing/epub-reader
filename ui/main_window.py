@@ -42,12 +42,22 @@ from models.bookmarks import BookmarkModel
 from models.settings import Settings
 from readers.epub_reader import EpubReader
 from ui.bookmark_dialog import BookmarkDialog
+from ui.navigation import Navigation
+from ui.pagination import Pagination
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         """Initialize the main window and application state."""
         super().__init__()
+
+        self.chapter_page_counts = []
+        self.book_total_pages = 0
+        self.book_pages_read = 0
+
+        self.page_count_index = 0
+        # self.page_count_callback = None
+        self.measured_content_height = 0
 
         self.setWindowTitle("EPUB Reader")
         self.resize(1200, 800)
@@ -67,6 +77,7 @@ class MainWindow(QMainWindow):
         self.current_page = 0
         self.total_pages = 1
         self.resize_progress = None
+        self.is_calculating_book_pages = False
 
         # timer for resizing window size
         self.resize_timer = QTimer()
@@ -209,6 +220,19 @@ class MainWindow(QMainWindow):
         }
         """)
 
+        self.page_counter_view = QWebEngineView(self)
+
+        # QWebEngineView must be shown for Chromium to maintain
+        # the correct internal viewport size. Place it off-screen
+        # so the user never sees it.
+        self.page_counter_view.move(-10000, -10000)
+        self.page_counter_view.resize(self.web_view.size())
+        self.page_counter_view.show()
+
+        self.page_counter_view.loadFinished.connect(
+            self._measure_loaded_chapter
+        )
+
         #
         # Reader widgets
         #
@@ -336,7 +360,18 @@ class MainWindow(QMainWindow):
         }
         """)
 
+        self.page_count_label = QLabel("0 / 0")
+        self.page_count_label.setMinimumWidth(90)
+
+        self.page_count_label.setStyleSheet("""
+        QLabel {
+            color: #3f1219;
+            font-weight: 500;
+        }
+        """)
+
         footer_layout.addWidget(self.status_label)
+        footer_layout.addWidget(self.page_count_label)
         footer_layout.addWidget(self.progress_bar)
 
         self.reader_page = QWidget()
@@ -525,73 +560,71 @@ class MainWindow(QMainWindow):
 
     def display_html(self, content):
         """Display raw HTML content."""
+        self.web_view.setHtml(self.build_reader_html(content))
 
-        html = f"""
+    def build_reader_html(self, content):
+        """Build the styled HTML used by the reader."""
+        return f"""
         <html>
         <head>
         <style>
+            html {{
+                overflow-x: hidden;
+                overflow-y: hidden;
+                background-color: #fef2f1;
+            }}
 
-        html {{
-            overflow-x: hidden;
-            overflow-y: hidden;
-            background-color: #fef2f1;
-        }}
+            body {{
+                width: min(90%, 700px);
+                margin: 60px auto;
+                padding: 50px 40px;
 
-        body {{
-            width: min(90%, 700px);
+                background: white;
+                box-sizing: border-box;
+                border: 1px solid #fad3d1;
+                border-radius: 10px;
 
-            margin: 60px auto;
-            padding: 50px 40px;
+                box-shadow:
+                    0 4px 15px rgba(63, 18, 25, 0.08);
 
-            background: white;
-            box-sizing: border-box;
-            border: 1px solid #fad3d1;
-            border-radius: 10px;
+                font-family: Georgia, serif;
+                font-size: {self.font_size}px;
+                color: #3f1219;
+                line-height: 1.7;
 
-            box-shadow: 0 4px 15px rgba(63, 18, 25, 0.08);
+                overflow: hidden;
+            }}
 
-            font-family: Georgia, serif;
-            font-size: {self.font_size}px;
-            color: #3f1219;
-            line-height: 1.7;
+            img {{
+                max-width: 100%;
+            }}
 
-            overflow: hidden;
-        }}
+            h1, h2, h3 {{
+                color: #3f1219;
+            }}
 
-        img {{
-            max-width: 100%;
-        }}
+            a {{
+                color: #8d4a58;
+            }}
 
-        h1, h2, h3 {{
-            color: #3f1219;
-        }}
+            blockquote {{
+                border-left: 4px solid #fec0c4;
+                padding-left: 15px;
+                color: #5f3f45;
+            }}
 
-        a {{
-            color: #8d4a58;
-        }}
-
-        blockquote {{
-            border-left: 4px solid #fec0c4;
-            padding-left: 15px;
-            color: #5f3f45;
-        }}
-
-        hr {{
-            border: none;
-            border-top: 1px solid #fad3d1;
-        }}
-
+            hr {{
+                border: none;
+                border-top: 1px solid #fad3d1;
+            }}
         </style>
         </head>
 
         <body>
-        {content}
+            {content}
         </body>
-
         </html>
         """
-
-        self.web_view.setHtml(html)
 
     def create_placeholder_cover(
         self,
@@ -630,9 +663,10 @@ class MainWindow(QMainWindow):
         """Handle window resizing."""
         super().resizeEvent(event)
         self.resize_timer.start(250)
-    
+
     def handle_resize_finished(self):
         """Recalculate paging after resizing."""
+
         if not self.reader:
             return
 
@@ -642,6 +676,11 @@ class MainWindow(QMainWindow):
         )
 
         self.calculate_pages()
+
+        QTimer.singleShot(
+            250,
+            self.calculate_book_page_counts
+        )
 
     def refresh_front_matter(self):
         """Refresh the front matter list."""
@@ -705,23 +744,129 @@ class MainWindow(QMainWindow):
 
             self.chapter_list.addItem(item)
 
+    def update_book_page_display(self):
+        """Update the total pages read display."""
+
+        if self.book_total_pages <= 0:
+            self.page_count_label.setText("-- / --")
+            return
+
+        self.page_count_label.setText(
+            f"{self.book_pages_read:,} / "
+            f"{self.book_total_pages:,}"
+        )
+
     def update_progress(self):
         """Update the reading progress bar."""
 
         if not self.reader:
             return
 
-        chapter_progress = (
-            self.reader.current_chapter +
-            (self.current_page / max(1, self.total_pages))
+        if self.book_total_pages > 0:
+            progress = (
+                self.book_pages_read /
+                self.book_total_pages
+            ) * 100
+        else:
+            chapter_count = max(
+                1,
+                self.reader.chapter_count
+            )
+
+            chapter_progress = (
+                self.reader.current_chapter +
+                (
+                    (self.current_page + 1) /
+                    max(1, self.total_pages)
+                )
+            )
+
+            progress = (
+                chapter_progress /
+                chapter_count
+            ) * 100
+
+        self.progress_bar.setValue(
+            max(
+                0,
+                min(100, round(progress))
+            )
         )
 
-        progress = (
-            chapter_progress /
-            self.reader.chapter_count
-        ) * 100
+    def calculate_book_page_counts(self):
+        """Calculate virtual page counts for every chapter."""
 
-        self.progress_bar.setValue(int(progress))
+        if not self.reader:
+            return
+        if self.is_calculating_book_pages:
+            return
+
+        self.is_calculating_book_pages = True
+
+        self.chapter_page_counts = []
+        self.book_total_pages = 0
+        self.book_pages_read = 0
+        self.page_count_index = 0
+
+        # Match the visible QWebEngineView's viewport.
+        self.page_counter_view.resize(
+            self.web_view.width(),
+            self.web_view.height()
+        )
+
+        # Keep the measurement view rendered but off-screen.
+        self.page_counter_view.move(
+            -10000,
+            -10000
+        )
+
+        self.page_count_label.setText(
+            "Calculating..."
+        )
+
+        self._load_next_chapter_for_measurement()
+
+    def _load_next_chapter_for_measurement(self):
+        """Load the next chapter into the page counter."""
+
+        if not self.reader:
+            return
+
+        if self.page_count_index >= self.reader.chapter_count:
+            self._finish_book_page_calculation()
+            return
+
+        chapter = self.reader.chapters[
+            self.page_count_index
+        ]
+
+        self.page_counter_view.setHtml(
+            self.build_reader_html(
+                chapter["content"]
+            )
+        )
+
+
+    def _measure_loaded_chapter(self, success):
+        """Measure a chapter after its HTML has loaded."""
+
+        if not success or not self.reader:
+            self._page_measurement_failed(
+                "Chapter HTML did not load."
+            )
+            return
+
+        # Give Chromium one event-loop cycle to finish layout.
+        QTimer.singleShot(
+            0,
+            self._request_content_height
+        )
+
+    def _page_measurement_failed(self, reason):
+        """Stop book pagination after a measurement failure."""
+        self.page_count_label.setText("-- / --")
+        self.is_calculating_book_pages = False
+
 
     def _load_library(self):
         """Populate the library grid with book tiles and progress bars."""
@@ -735,6 +880,9 @@ class MainWindow(QMainWindow):
             book_id = book["id"]
             title = book["title"]
             cover_path = book["cover_path"]
+            pages_read = book["pages_read"]
+            pages_read = book["pages_read"]
+            total_pages = book["total_pages"]
 
             if not cover_path or not Path(cover_path).exists():
                 cover_path = (covers_dir / f"placeholder_{book_id}.png")
@@ -748,6 +896,17 @@ class MainWindow(QMainWindow):
                 else 0
             )
             progress = max(0, min(100, progress or 0))
+
+            pages_read = (
+                book["pages_read"]
+                if "pages_read" in book.keys()
+                else 0
+            )
+            book_total_pages = (
+                book["total_pages"]
+                if "total_pages" in book.keys()
+                else 0
+            )
 
             #
             # QListWidget item
@@ -809,6 +968,18 @@ class MainWindow(QMainWindow):
             progress_bar.setFormat(f"{progress}%")
             progress_bar.setTextVisible(True)
             progress_bar.setFixedHeight(14)
+
+            # progress_bar.setToolTip(
+            #     f"{pages_read:,} / {total_pages:,} pages read"
+            #     f"{progress}% of book completed"
+            # )
+            if book_total_pages > 0:
+                progress_bar.setToolTip(
+                    f"{pages_read:,} / "
+                    f"{book_total_pages:,} pages read"
+                )
+            else:
+                progress_bar.setToolTip(f"{progress}% complete")
 
             progress_bar.setStyleSheet("""
                 QProgressBar {
@@ -990,10 +1161,6 @@ class MainWindow(QMainWindow):
             self.save_last_book()
             self.refresh_bookmarks()
 
-            # debugging
-            print("book_id:", book_id)
-            print("book:", book)
-
             # Restore the last chapter/page read.
             chapter = book["last_chapter"]
             page = book["last_page"]
@@ -1007,6 +1174,7 @@ class MainWindow(QMainWindow):
             self.refresh_chapters()
 
             self.display_current_chapter()
+            QTimer.singleShot(500, self.calculate_book_page_counts)
             self.status_label.setText(title)
 
             self._load_library()
@@ -1054,6 +1222,31 @@ class MainWindow(QMainWindow):
             self.on_page_height
         )
 
+    def _finish_book_page_calculation(self):
+        """Finish calculating global book pagination."""
+
+        if not self.reader:
+            return
+
+        if (
+            len(self.chapter_page_counts) !=
+            self.reader.chapter_count
+        ):
+            self.page_count_label.setText(
+                "-- / --"
+            )
+            return
+
+        self.book_total_pages = sum(
+            self.chapter_page_counts
+        )
+
+        self.update_book_pages_read()
+        self.update_book_page_display()
+        self.update_progress()
+        self.save_position()
+        self.is_calculating_book_pages = False
+
     def get_page_height(self):
         """Return the usable page height."""
         return max(100, self.web_view.height())
@@ -1092,6 +1285,83 @@ class MainWindow(QMainWindow):
 
         self.show_current_page()
 
+    def _request_content_height(self):
+        """Request the rendered height of the current chapter."""
+
+        if not self.reader:
+            return
+
+        self.page_counter_view.page().runJavaScript(
+            """
+            Math.max(
+                document.body
+                    ? document.body.scrollHeight
+                    : 0,
+                document.documentElement
+                    ? document.documentElement.scrollHeight
+                    : 0
+            )
+            """,
+            self._receive_content_height
+        )
+
+    def _receive_content_height(self, height):
+        """Receive the rendered chapter height."""
+
+        if not self.reader:
+            return
+
+        if not isinstance(height, (int, float)) or height <= 0:
+            self._page_measurement_failed(
+                f"Invalid content height: {height!r}"
+            )
+            return
+
+        self.measured_content_height = float(
+            height
+        )
+
+        self.page_counter_view.page().runJavaScript(
+            "window.innerHeight",
+            self._receive_viewport_height
+        )
+
+    def _receive_viewport_height(self, viewport_height):
+        """Calculate pages using the Chromium viewport height."""
+
+        if not self.reader:
+            return
+
+        if (
+            not isinstance(viewport_height, (int, float)) or
+            viewport_height <= 0
+        ):
+            self._page_measurement_failed(
+                f"Invalid viewport height: {viewport_height!r}"
+            )
+            return
+
+        measured_index = self.page_count_index
+
+        chapter_pages = max(
+            1,
+            math.ceil(
+                self.measured_content_height /
+                float(viewport_height)
+            )
+        )
+
+        self.chapter_page_counts.append(
+            chapter_pages
+        )
+
+        self.page_count_index += 1
+
+        QTimer.singleShot(
+            0,
+            self._load_next_chapter_for_measurement
+        )
+
     def replace_book_cover(self, item):
         """Replace a book cover with a user-supplied PNG."""
 
@@ -1120,12 +1390,12 @@ class MainWindow(QMainWindow):
 
     def show_current_page(self):
         """Display the current page within the chapter."""
+
         if not self.reader:
             return
 
         page_height = self.get_page_height()
 
-        # Scroll to the appropriate page offset.
         js = f"""
         window.scrollTo(
             0,
@@ -1133,18 +1403,24 @@ class MainWindow(QMainWindow):
         );
         """
 
-        self.web_view.page().runJavaScript(js)
+        self.web_view.page().runJavaScript(
+            js
+        )
 
+        self.update_book_pages_read()
         self.update_progress()
+        self.update_book_page_display()
 
         self.status_label.setText(
-            f"{self.reader.title} | " # Book title
-            f"{self.progress_bar.value()}% | " # progress bar %
-            f"{self.reader.current_chapter_title} | " # Chapter title
-            f"Page {self.current_page + 1}/{self.total_pages} | " # Page number
+            f"{self.reader.title} | "
+            f"{self.reader.current_chapter_title} | "
+            f"Chapter page "
+            f"{self.current_page + 1}/"
+            f"{self.total_pages}"
         )
 
         self.save_position()
+
         
 
     def display_current_chapter(self):
@@ -1196,6 +1472,44 @@ class MainWindow(QMainWindow):
             self.go_to_last_page = True
             self.display_current_chapter()
 
+    def update_book_pages_read(self):
+        """Update the current global page position."""
+
+        if (
+            not self.reader or
+            not self.chapter_page_counts
+        ):
+            return
+
+        chapter_index = (
+            self.reader.current_chapter
+        )
+
+        if (
+            chapter_index < 0 or
+            chapter_index >=
+            len(self.chapter_page_counts)
+        ):
+            return
+
+        pages_before_chapter = sum(
+            self.chapter_page_counts[
+                :chapter_index
+            ]
+        )
+
+        current_chapter_page = min(
+            self.current_page + 1,
+            self.chapter_page_counts[
+                chapter_index
+            ]
+        )
+
+        self.book_pages_read = (
+            pages_before_chapter +
+            current_chapter_page
+        )
+
     def next_chapter(self):
         """Advance directly to the next chapter."""
         if not self.reader:
@@ -1220,25 +1534,45 @@ class MainWindow(QMainWindow):
         """Save the current reading position and progress."""
         if not self.reader or not self.current_book_id:
             return
+        
+        if self.book_total_pages > 0:
+            progress_percent = round(
+                self.book_pages_read /
+                self.book_total_pages
+                * 100
+            )
+        else:
+            chapter_count = max(1, self.reader.chapter_count)
+            chapter_progress = (self.reader.current_chapter +
+                (
+                    (self.current_page + 1) /
+                    max(1, self.total_pages)
+                )
+            )
+            progress_percent = round(chapter_progress / chapter_count * 100)
 
         chapter_count = max(1, self.reader.chapter_count)
         total_pages = max(1, self.total_pages)
 
         # Include the current page in the chapter progress so that
         # the final page of the final chapter reaches 100%.
-        page_progress = min(1.0, (self.current_page + 1) / total_pages)
-        overall_progress = (
-            (self.reader.current_chapter + page_progress)
-            / chapter_count
-        ) * 100
+        # page_progress = min(1.0, (self.current_page + 1) / total_pages)
+        # overall_progress = (
+        #     (self.reader.current_chapter + page_progress)
+        #     / chapter_count
+        # ) * 100
 
-        progress_percent = max(0, min(100, round(overall_progress)))
+        progress_percent = max(0, min(100, progress_percent))
+
+        # pages_read = round(total_pages * progress_percent / 100)
 
         self.library.save_position(
             self.current_book_id,
             self.reader.current_chapter,
             self.current_page,
-            progress_percent
+            progress_percent,
+            self.book_pages_read,
+            self.book_total_pages
         )
 
     def show_bookmark_context_menu(self, position):
@@ -1377,6 +1711,7 @@ class MainWindow(QMainWindow):
 
             if self.reader:
                 self.display_current_chapter()
+                QTimer.singleShot(0, self.calculate_book_page_counts)
 
     def decrease_font_size(self):
         """Decrease the reading font size."""
@@ -1386,6 +1721,7 @@ class MainWindow(QMainWindow):
 
             if self.reader:
                 self.display_current_chapter()
+                QTimer.singleShot(0, self.calculate_book_page_counts)
 
     def library_book_selected(self, item):
         """Open a book selected from the library."""

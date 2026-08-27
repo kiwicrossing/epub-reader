@@ -325,14 +325,15 @@ class EpubReader:
             else:
                 self.chapters.append(entry)
 
-            print(
-                "chapters:",
-                len(self.chapters),
-                "front:",
-                len(self.front_matter),
-                "back:",
-                len(self.back_matter),
-            )
+            # debugging
+            # print(
+            #     "chapters:",
+            #     len(self.chapters),
+            #     "front:",
+            #     len(self.front_matter),
+            #     "back:",
+            #     len(self.back_matter),
+            # )
 
     
     @property
