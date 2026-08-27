@@ -1,8 +1,11 @@
 
 import re
 import os
+from bs4 import BeautifulSoup
 from ebooklib import epub
 from ebooklib import ITEM_DOCUMENT
+
+from ML.section_classifier import SectionClassifier
 
 
 class EpubReader:
@@ -18,8 +21,11 @@ class EpubReader:
 
         self.title = self._extract_title()
 
+        self.ml_classifier = SectionClassifier()
+
         self.front_matter = []
         self.chapters = []
+        self.back_matter = []
 
         self._load_chapters()
 
@@ -36,6 +42,60 @@ class EpubReader:
             return metadata[0][0]
 
         return self.file_path
+
+    def _filename_to_title(self, filename):
+        """ex. change 002_Title_Page.xhtml -> Title Page"""
+        filename = filename.split("/")[-1]
+
+        # Remove extension
+        filename = filename.rsplit(".", 1)[0]
+
+        # Remove leading numbers
+        filename = re.sub(
+            r"^\d+[_-]*",
+            "",
+            filename
+        )
+
+        # Replace separators
+        filename = filename.replace("_", " ")
+        filename = filename.replace("-", " ")
+
+        return filename.title()
+
+    def _extract_section_title(self, html, filename):
+        """
+        Try progressively smarter ways to find a title.
+        """
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Try h1-h3 first
+        for tag in ("h1", "h2", "h3"):
+            heading = soup.find(tag)
+
+            if heading:
+                text = heading.get_text(strip=True)
+
+                if text:
+                    return text
+
+        # Try common chapter/title classes
+        element = soup.find(
+            class_=re.compile(
+                r"title|chapter|heading",
+                re.IGNORECASE
+            )
+        )
+
+        if element:
+            text = element.get_text(strip=True)
+
+            if text:
+                return text
+
+        # Fall back to filename
+        return self._filename_to_title(filename)
 
     def extract_cover(self, output_dir):
         """Extract and save the EPUB cover image."""
@@ -114,61 +174,206 @@ class EpubReader:
 
 
     def _is_chapter_title(self, title):
-        """Return True if the title appears to be a chapter."""
+        """Classification of chapters."""
 
-        title = title.strip()
+        CHAPTER_PATTERNS = [
+            r"^chapter\s+\w+",
+            r"^\d+$",
+            r"^part\s+[ivxlcdm\d]+$",
+            r"^book\s+\w+$",
+        ]
+        title = title.strip().lower()
 
-        return bool(
-            re.match(
-                r"^(chapter\s+\w+|\d+)$",
-                title,
-                re.IGNORECASE
-            )
+        for pattern in CHAPTER_PATTERNS:
+            if re.match(pattern, title, re.IGNORECASE):
+                return True
+
+        return False
+
+    def chapter_confidence(title):
+        """Confidence score that is chapter."""
+        title = title.lower().strip()
+
+        score = 0
+
+        if re.match(r"^chapter\s+\w+", title):
+            score += 10
+
+        if re.match(r"^\d+$", title):
+            score += 8
+
+        if len(title.split()) <= 2:
+            score -= 2
+
+        if title in FRONT_MATTER_WORDS:
+            score -= 20
+
+        return score
+
+    def _classify_section(
+        self,
+        title,
+        index,
+        total_sections,
+        epub_type=None,
+    ):
+        # 1. EPUB metadata
+        if epub_type == "frontmatter":
+            return "front"
+
+        # 2. Strong rules
+        result = self._classify_rules(
+            title,
+            index,
+            total_sections,
         )
+
+        if result is not None:
+            return result
+
+        # 3. ML fallback
+        prediction = self.ml_classifier.predict(title)
+        return prediction
+
+
+    def _classify_rules(
+        self,
+        title,
+        index,
+        total_sections,
+    ):
+        title_lower = title.lower().strip()
+
+        front_words = {
+            "title page",
+            "copyright",
+            "dedication",
+            "epigraph",
+            "foreword",
+            "preface",
+            "introduction",
+            "contents",
+            "acknowledgements",
+            "acknowledgments",
+        }
+
+        back_words = {
+            "about the author",
+            "about author",
+            "bibliography",
+            "references",
+            "appendix",
+            "index",
+        }
+
+        if title_lower in front_words:
+            return "front"
+
+        if title_lower in back_words:
+            return "back"
+
+        if self._is_chapter_title(title):
+            return "chapter"
+
+        return None
 
     def _load_chapters(self):
         """Load chapter content and titles from the EPUB."""
-        chapter_index = 0
 
-        for item in self.book.get_items():
-            if item.get_type() == ITEM_DOCUMENT:
+        documents = [
+            item
+            for item in self.book.get_items()
+            if item.get_type() == ITEM_DOCUMENT
+        ]
 
-                html = item.get_content().decode(
-                    "utf-8",
-                    errors="ignore"
-                )
+        total_sections = len(documents)
 
-                # Try to find a chapter heading.
-                title_match = re.search(
-                    r"<h[1-3][^>]*>(.*?)</h[1-3]>",
-                    html,
-                    re.IGNORECASE | re.DOTALL
-                )
+        for index, item in enumerate(documents):
 
-                if title_match:
-                    title = title_match.group(1)
+            html = item.get_content().decode(
+                "utf-8",
+                errors="ignore"
+            )
 
-                    # Remove any embedded HTML tags.
-                    title = re.sub(
-                        r"<[^>]+>",
-                        "",
-                        title
-                    ).strip()
+            # # Try to find a heading.
+            # title_match = re.search(
+            #     r"<h[1-3][^>]*>(.*?)</h[1-3]>",
+            #     html,
+            #     re.IGNORECASE | re.DOTALL
+            # )
 
-                else:
-                    title = f"Chapter {chapter_index + 1}"
+            # if title_match:
+            #     title = title_match.group(1)
 
-                entry = {
-                    "title": title,
-                    "content": html
-                }
-                if self._is_chapter_title(title):
-                    self.chapters.append(entry)
-                else:
-                    self.front_matter.append(entry)
+            #     # Remove embedded HTML tags.
+            #     title = re.sub(
+            #         r"<[^>]+>",
+            #         "",
+            #         title
+            #     ).strip()
 
-                chapter_index += 1
+            # else:
+            #     title = ""
 
+            filename = item.get_name()
+
+            filename_lower = filename.lower()
+
+            if (
+                "index_split" in filename_lower
+                or "nav" in filename_lower
+                or "toc" in filename_lower
+            ):
+                continue
+
+            title = self._extract_section_title(
+                html,
+                filename
+            )
+
+
+            # Skip empty navigation pages
+            if not title.strip():
+                clean_text = re.sub(
+                    r"<[^>]+>",
+                    "",
+                    html
+                ).strip()
+
+                if len(clean_text) < 100:
+                    continue
+
+                title = self._filename_to_title(item.get_name())
+
+            entry = {
+                "title": title,
+                "content": html
+            }
+
+            section_type = self._classify_section(
+                title=title,
+                index=index,
+                total_sections=total_sections,
+                epub_type=None,  # add metadata detection later
+            )
+
+            if section_type == "front":
+                self.front_matter.append(entry)
+            elif section_type == "back":
+                self.back_matter.append(entry)
+            else:
+                self.chapters.append(entry)
+
+            print(
+                "chapters:",
+                len(self.chapters),
+                "front:",
+                len(self.front_matter),
+                "back:",
+                len(self.back_matter),
+            )
+
+    
     @property
     def chapter_count(self):
         """Return the number of chapters."""
@@ -185,8 +390,21 @@ class EpubReader:
             self.current_chapter
         ]["title"]
 
+    # def get_current_chapter(self):
+    #     """Return HTML for the current chapter."""
+    #     return self.chapters[self.current_chapter]["content"]
+
     def get_current_chapter(self):
         """Return HTML for the current chapter."""
+        if not self.chapters:
+            if self.front_matter:
+                return self.front_matter[0]["content"]
+
+            if self.back_matter:
+                return self.back_matter[0]["content"]
+
+            return "<h1>Book contains no readable sections.</h1>"
+
         return self.chapters[self.current_chapter]["content"]
 
     def next_chapter(self):

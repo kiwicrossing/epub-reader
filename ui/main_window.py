@@ -1,5 +1,6 @@
 import math
 import shutil
+import traceback
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QSize, QTimer
@@ -162,6 +163,7 @@ class MainWindow(QMainWindow):
         QLabel {
             font-size: 24px;
             font-weight: bold;
+            color: #3f1219;
             padding: 12px;
         }
         """)
@@ -182,22 +184,35 @@ class MainWindow(QMainWindow):
         self.library_grid.setIconSize(QSize(150, 220))
         self.library_grid.setSpacing(20)
 
+        self.library_grid.setStyleSheet("""
+        QListWidget {
+            background-color: #fef2f1;
+            border: none;
+        }
+
+        QListWidget::item:selected {
+            background-color: #fec0c4;
+            border-radius: 6px;
+        }
+        """)
+
         self.library_grid.itemDoubleClicked.connect(self.library_book_selected)
 
         home_layout.addWidget(library_title)
         home_layout.addWidget(self.library_grid)
 
-        # self.library_list = QListWidget()
-        # self.library_list.itemDoubleClicked.connect(self.library_book_selected)
         self.bookmark_list = QListWidget()
 
         self.web_view = QWebEngineView()
         self.web_view.loadFinished.connect(self.calculate_pages)
 
-        # # Dockable side panels.
-        # self.library_dock = QDockWidget("Library")
-        # self.library_dock.setWidget(self.library_list)
-        # self.addDockWidget(Qt.LeftDockWidgetArea,self.library_dock)
+        self.web_view.setStyleSheet("""
+        QWebEngineView {
+            background-color: #fef2f1;
+            border-left: 1px solid #fad3d1;
+            border-right: 1px solid #fad3d1;
+        }
+        """)
 
         #
         # Reader widgets
@@ -214,6 +229,25 @@ class MainWindow(QMainWindow):
         self.front_matter_dock.setWidget(self.front_matter_list)
         self.addDockWidget(Qt.LeftDockWidgetArea,self.front_matter_dock)
 
+        # Back Matter
+        self.back_matter_list = QListWidget()
+        self.back_matter_list.itemDoubleClicked.connect(self.back_matter_selected)
+        self.back_matter_dock = QDockWidget("Back Matter")
+        self.back_matter_dock.setWidget(self.back_matter_list)
+        self.addDockWidget(Qt.LeftDockWidgetArea,self.back_matter_dock)
+
+        # Put Back Matter underneath Front Matter
+        self.splitDockWidget(
+            self.front_matter_dock,
+            self.back_matter_dock,
+            Qt.Vertical
+        )
+        self.front_matter_dock.setMaximumHeight(120)
+        self.back_matter_dock.setMaximumHeight(80)
+        self.chapter_list.setMaximumWidth(180)
+        self.front_matter_list.setMaximumWidth(180)
+        self.back_matter_list.setMaximumWidth(180)
+
         self.bookmark_dock = QDockWidget("Bookmarks")
         self.bookmark_dock.setMinimumWidth(150)
         self.bookmark_dock.setMaximumWidth(250)
@@ -222,6 +256,18 @@ class MainWindow(QMainWindow):
             Qt.RightDockWidgetArea,
             self.bookmark_dock
         )
+        self.bookmark_dock.setMaximumWidth(140)
+        self.bookmark_list.setStyleSheet("""
+        QListWidget {
+            background-color: #fad3d1;
+            color: #3f1219;
+            border: none;
+        }
+
+        QListWidget::item:selected {
+            background-color: #fec0c4;
+        }
+        """)
 
         self.bookmark_list.itemDoubleClicked.connect(self.bookmark_selected)
         self.bookmark_list.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -259,30 +305,43 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("Ready")
         splitter.setSizes([200, 800, 200])
 
-        # container = QWidget()
-        # layout = QVBoxLayout(container)
-        # layout.addWidget(splitter, 1)
+        self.status_label.setStyleSheet("""
+        QLabel {
+            color: #3f1219;
+            font-weight: 500;
+        }
+        """)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setMaximumWidth(250)
 
         footer = QWidget()
+        footer.setStyleSheet("""
+        QWidget {
+            background-color: #fce2e1;
+            border-top: 1px solid #fad3d1;
+        }
+        """)
+        footer.setMaximumHeight(35)
         footer_layout = QHBoxLayout(footer)
+        footer_layout.setContentsMargins(5, 2, 5, 2)
+        footer_layout.setSpacing(5)
 
         self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #bdb8aa;
-                border-radius: 4px;
-                background: #f4f1e8;
-                text-align: center;
-            }
+        QProgressBar {
+            border: 1px solid #fad3d1;
+            border-radius: 6px;
+            background: #fce2e1;
+            color: #3f1219;
+            text-align: center;
+        }
 
-            QProgressBar::chunk {
-                background-color: #6b8e23;
-                border-radius: 3px;
-            }
-            """)
+        QProgressBar::chunk {
+            background-color: #fec0c4;
+            border-radius: 5px;
+        }
+        """)
 
         footer_layout.addWidget(self.status_label)
         footer_layout.addWidget(self.progress_bar)
@@ -301,9 +360,126 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(self.stack)
 
+        #
+        # Style sheet
+        #
+        self.setStyleSheet("""
+        QMainWindow {
+            background-color: #fef2f1;
+            color: #3f1219;
+        }
+
+        QWidget {
+            color: #3f1219;
+        }
+
+        /* Toolbar */
+        QToolBar {
+            background-color: #fce2e1;
+            border: none;
+            spacing: 4px;
+            padding: 4px;
+        }
+
+        /* Dock Widgets */
+        QDockWidget {
+            background-color: #fce2e1;
+            color: #3f1219;
+        }
+
+        QDockWidget::title {
+            background-color: #fad3d1;
+            color: #3f1219;
+            padding: 6px;
+            font-weight: bold;
+            border-bottom: 1px solid #fec0c4;
+        }
+
+        /* Lists */
+        QListWidget {
+            background-color: #fce2e1;
+            border: none;
+            color: #3f1219;
+        }
+
+        QListWidget::item {
+            padding: 3px;
+        }
+
+        QListWidget::item:selected {
+            background-color: #fec0c4;
+            color: #3f1219;
+        }
+
+        /* Buttons */
+        QPushButton {
+            background-color: #fad3d1;
+            color: #3f1219;
+            border: 1px solid #fec0c4;
+            border-radius: 6px;
+            padding: 4px 10px;
+        }
+
+        QPushButton:hover {
+            background-color: #fec0c4;
+        }
+
+        QPushButton:pressed {
+            background-color: #fce2e1;
+        }
+
+        /* Tool Button */
+        QToolButton {
+            background-color: #fad3d1;
+            color: #3f1219;
+            border: 1px solid #fec0c4;
+            border-radius: 6px;
+            padding: 4px 10px;
+        }
+
+        /* Menus */
+        QMenu {
+            background-color: #fef2f1;
+            color: #3f1219;
+            border: 1px solid #fad3d1;
+        }
+
+        QMenu::item:selected {
+            background-color: #fec0c4;
+        }
+
+        /* Splitters */
+        QSplitter::handle {
+            background-color: #fad3d1;
+        }
+
+        /* Scrollbars */
+        QScrollBar:vertical {
+            background-color: #fce2e1;
+            width: 12px;
+        }
+
+        QScrollBar::handle:vertical {
+            background-color: #fec0c4;
+            border-radius: 5px;
+            min-height: 25px;
+        }
+
+        QScrollBar:horizontal {
+            background-color: #fce2e1;
+            height: 12px;
+        }
+
+        QScrollBar::handle:horizontal {
+            background-color: #fec0c4;
+            border-radius: 5px;
+        }
+        """)
+
         # Hide docks
         self.chapter_dock.hide()
         self.front_matter_dock.hide()
+        self.back_matter_dock.hide()
         self.bookmark_dock.hide()
         self.reader_toolbar.hide()
 
@@ -324,6 +500,7 @@ class MainWindow(QMainWindow):
 
         self.chapter_dock.hide()
         self.front_matter_dock.hide()
+        self.back_matter_dock.hide()
         self.bookmark_dock.hide()
 
     def show_library_context_menu(
@@ -361,7 +538,7 @@ class MainWindow(QMainWindow):
         html {{
             overflow-x: hidden;
             overflow-y: hidden;
-            background-color: #d9d4c7;
+            background-color: #fef2f1;
         }}
 
         body {{
@@ -372,18 +549,40 @@ class MainWindow(QMainWindow):
 
             background: white;
             box-sizing: border-box;
-            box-shadow: 0 0 12px rgba(0, 0, 0, 0.15);
-            border-radius: 4px;
+            border: 1px solid #fad3d1;
+            border-radius: 10px;
+
+            box-shadow: 0 4px 15px rgba(63, 18, 25, 0.08);
 
             font-family: Georgia, serif;
             font-size: {self.font_size}px;
-            line-height: 1.6;
+            color: #3f1219;
+            line-height: 1.7;
 
             overflow: hidden;
         }}
 
         img {{
             max-width: 100%;
+        }}
+
+        h1, h2, h3 {{
+            color: #3f1219;
+        }}
+
+        a {{
+            color: #8d4a58;
+        }}
+
+        blockquote {{
+            border-left: 4px solid #fec0c4;
+            padding-left: 15px;
+            color: #5f3f45;
+        }}
+
+        hr {{
+            border: none;
+            border-top: 1px solid #fad3d1;
         }}
 
         </style>
@@ -481,6 +680,40 @@ class MainWindow(QMainWindow):
             self.reader.front_matter[index]["content"]
         )
 
+    def refresh_back_matter(self):
+        """Refresh the back matter list."""
+
+        self.back_matter_list.clear()
+
+        if not self.reader:
+            return
+
+        for index, entry in enumerate(
+            self.reader.back_matter
+        ):
+            item = QListWidgetItem(
+                entry["title"]
+            )
+
+            item.setData(
+                Qt.UserRole,
+                index
+            )
+
+            self.back_matter_list.addItem(item)
+
+    def back_matter_selected(self, item):
+        """Open the selected back matter item."""
+
+        index = item.data(Qt.UserRole)
+
+        if index is None:
+            return
+
+        self.display_html(
+            self.reader.back_matter[index]["content"]
+        )
+
     def refresh_chapters(self):
         """Refresh the chapter list."""
         self.chapter_list.clear()
@@ -564,6 +797,7 @@ class MainWindow(QMainWindow):
         try:
             self.chapter_dock.show()
             self.front_matter_dock.show()
+            self.back_matter_dock.show()
             self.bookmark_dock.show()
             self.home_toolbar.show()
             self.reader_toolbar.show()
@@ -581,6 +815,10 @@ class MainWindow(QMainWindow):
             self.save_last_book()
             self.refresh_bookmarks()
 
+            # debugging
+            print("book_id:", book_id)
+            print("book:", book)
+
             # Restore the last chapter/page read.
             chapter = book["last_chapter"]
             page = book["last_page"]
@@ -590,7 +828,24 @@ class MainWindow(QMainWindow):
             self.reader.current_chapter = chapter
             self.current_page = page
             self.refresh_front_matter()
+            self.refresh_back_matter()
             self.refresh_chapters()
+
+            # debugging
+            print(
+                "chapter_count:",
+                self.reader.chapter_count
+            )
+
+            print(
+                "len(chapters):",
+                len(self.reader.chapters)
+            )
+
+            print(
+                "current_chapter:",
+                self.reader.current_chapter
+            )
             self.display_current_chapter()
 
             self.status_label.setText(title)
@@ -598,6 +853,7 @@ class MainWindow(QMainWindow):
             self._load_library()
 
         except Exception as ex:
+            traceback.print_exc()
             QMessageBox.critical(self, "Error", str(ex))
 
     def load_last_book(self):
