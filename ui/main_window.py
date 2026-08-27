@@ -1,12 +1,16 @@
 import math
+import shutil
+import traceback
+from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QListView,
     QDockWidget,
     QMainWindow,
     QMenu,
@@ -14,13 +18,24 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSplitter,
+    QStackedWidget,
+    QStyle,
     QToolBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtGui import QAction, QShortcut, QKeySequence
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QFont,
+    QIcon,
+    QKeySequence,
+    QPainter,
+    QPixmap,
+    QShortcut,
+)
 
 from models.library import LibraryModel
 from models.bookmarks import BookmarkModel
@@ -64,11 +79,21 @@ class MainWindow(QMainWindow):
 
     def _create_ui(self):
         """Create and configure all UI elements."""
-        toolbar = QToolBar()
-        self.addToolBar(toolbar)
+
+        #
+        # Toolbar
+        #
+        self.home_toolbar = QToolBar()
+        self.addToolBar(self.home_toolbar)
+
+        self.reader_toolbar = QToolBar()
+        self.addToolBar(self.reader_toolbar)
+
+        home_btn = QPushButton("Home")
+        open_btn = QPushButton("Open")
 
         # Top bar buttons.
-        open_btn = QPushButton("Open")
+        # open_btn = QPushButton("Open")
         next_chapter_btn = QPushButton("Next Chapter")
         prev_chapter_btn = QPushButton("Previous Chapter")
         next_page_btn = QPushButton("Next Page")
@@ -76,7 +101,9 @@ class MainWindow(QMainWindow):
         view_bookmarks_btn = QPushButton("Bookmarks")
         bookmark_btn = QPushButton("Add Bookmark")
 
+        #
         # Font dropdown
+        #
         font_btn = QToolButton()
         font_btn.setText("Font")
         font_btn.setPopupMode(QToolButton.InstantPopup)
@@ -97,16 +124,27 @@ class MainWindow(QMainWindow):
         font_menu.addAction(font_smaller_action)
         font_btn.setMenu(font_menu)
 
+        #
+        # Toolbar order
+        #
+        # toolbar.addWidget(open_btn)
+        # toolbar.addWidget(home_btn)
+        # toolbar.addWidget(open_btn)
+        self.home_toolbar.addWidget(home_btn)
+        self.home_toolbar.addWidget(open_btn)
+        self.reader_toolbar.addWidget(next_chapter_btn)
+        self.reader_toolbar.addWidget(prev_chapter_btn)
+        self.reader_toolbar.addWidget(next_page_btn)
+        self.reader_toolbar.addWidget(prev_page_btn)
+        self.reader_toolbar.addWidget(view_bookmarks_btn)
+        self.reader_toolbar.addWidget(bookmark_btn)
+        self.reader_toolbar.addWidget(font_btn)
 
-        toolbar.addWidget(open_btn)
-        toolbar.addWidget(next_chapter_btn)
-        toolbar.addWidget(prev_chapter_btn)
-        toolbar.addWidget(next_page_btn)
-        toolbar.addWidget(prev_page_btn)
-        toolbar.addWidget(view_bookmarks_btn)
-        toolbar.addWidget(bookmark_btn)
-        toolbar.addWidget(font_btn)
-
+        #
+        # Toolbar actions
+        #
+        # open_btn.clicked.connect(self.open_book)
+        home_btn.clicked.connect(self.show_home)
         open_btn.clicked.connect(self.open_book)
         next_chapter_btn.clicked.connect(self.next_chapter)
         prev_chapter_btn.clicked.connect(self.previous_chapter)
@@ -115,19 +153,70 @@ class MainWindow(QMainWindow):
         view_bookmarks_btn.clicked.connect(self.show_bookmarks)
         bookmark_btn.clicked.connect(self.add_bookmark)
 
+        #
+        # Home page
+        #
+        self.home_page = QWidget()
+        home_layout = QVBoxLayout(self.home_page)
+        library_title = QLabel("My Library")
+        library_title.setStyleSheet("""
+        QLabel {
+            font-size: 24px;
+            font-weight: bold;
+            color: #3f1219;
+            padding: 12px;
+        }
+        """)
 
-        self.library_list = QListWidget()
-        self.library_list.itemDoubleClicked.connect(self.library_book_selected)
+        self.library_grid = QListWidget()
+
+        self.library_grid.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.library_grid.customContextMenuRequested.connect(self.show_library_context_menu)
+
+        # make covers look like tiles
+        self.library_grid.setViewMode(QListView.IconMode)
+        self.library_grid.setResizeMode(QListWidget.Adjust)
+        self.library_grid.setMovement(QListView.Static)
+        self.library_grid.setSpacing(25)
+        self.library_grid.setGridSize(QSize(180, 280))
+        self.library_grid.setWordWrap(True)
+
+        self.library_grid.setIconSize(QSize(150, 220))
+        self.library_grid.setSpacing(20)
+
+        self.library_grid.setStyleSheet("""
+        QListWidget {
+            background-color: #fef2f1;
+            border: none;
+        }
+
+        QListWidget::item:selected {
+            background-color: #fec0c4;
+            border-radius: 6px;
+        }
+        """)
+
+        self.library_grid.itemDoubleClicked.connect(self.library_book_selected)
+
+        home_layout.addWidget(library_title)
+        home_layout.addWidget(self.library_grid)
+
         self.bookmark_list = QListWidget()
 
         self.web_view = QWebEngineView()
         self.web_view.loadFinished.connect(self.calculate_pages)
 
-        # Dockable side panels.
-        self.library_dock = QDockWidget("Library")
-        self.library_dock.setWidget(self.library_list)
-        self.addDockWidget(Qt.LeftDockWidgetArea,self.library_dock)
+        self.web_view.setStyleSheet("""
+        QWebEngineView {
+            background-color: #fef2f1;
+            border-left: 1px solid #fad3d1;
+            border-right: 1px solid #fad3d1;
+        }
+        """)
 
+        #
+        # Reader widgets
+        #
         self.chapter_list = QListWidget()
         self.chapter_list.itemDoubleClicked.connect(self.chapter_selected)
         self.chapter_dock = QDockWidget("Chapters")
@@ -140,6 +229,25 @@ class MainWindow(QMainWindow):
         self.front_matter_dock.setWidget(self.front_matter_list)
         self.addDockWidget(Qt.LeftDockWidgetArea,self.front_matter_dock)
 
+        # Back Matter
+        self.back_matter_list = QListWidget()
+        self.back_matter_list.itemDoubleClicked.connect(self.back_matter_selected)
+        self.back_matter_dock = QDockWidget("Back Matter")
+        self.back_matter_dock.setWidget(self.back_matter_list)
+        self.addDockWidget(Qt.LeftDockWidgetArea,self.back_matter_dock)
+
+        # Put Back Matter underneath Front Matter
+        self.splitDockWidget(
+            self.front_matter_dock,
+            self.back_matter_dock,
+            Qt.Vertical
+        )
+        self.front_matter_dock.setMaximumHeight(120)
+        self.back_matter_dock.setMaximumHeight(80)
+        self.chapter_list.setMaximumWidth(180)
+        self.front_matter_list.setMaximumWidth(180)
+        self.back_matter_list.setMaximumWidth(180)
+
         self.bookmark_dock = QDockWidget("Bookmarks")
         self.bookmark_dock.setMinimumWidth(150)
         self.bookmark_dock.setMaximumWidth(250)
@@ -148,16 +256,26 @@ class MainWindow(QMainWindow):
             Qt.RightDockWidgetArea,
             self.bookmark_dock
         )
-        self.resizeDocks(
-            [self.library_dock, self.bookmark_dock],
-            [250, 180],
-            Qt.Horizontal
-        )
+        self.bookmark_dock.setMaximumWidth(140)
+        self.bookmark_list.setStyleSheet("""
+        QListWidget {
+            background-color: #fad3d1;
+            color: #3f1219;
+            border: none;
+        }
+
+        QListWidget::item:selected {
+            background-color: #fec0c4;
+        }
+        """)
+
         self.bookmark_list.itemDoubleClicked.connect(self.bookmark_selected)
         self.bookmark_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.bookmark_list.customContextMenuRequested.connect(self.show_bookmark_context_menu)
 
+        #
         # Keyboard shortcuts for page navigation.
+        # 
         next_shortcut = QShortcut(QKeySequence(Qt.Key_Right),self)
         next_shortcut.activated.connect(self.next_page)
 
@@ -179,43 +297,242 @@ class MainWindow(QMainWindow):
         delete_shortcut = QShortcut(QKeySequence(Qt.Key_Delete),self.bookmark_list)
         delete_shortcut.activated.connect(self.delete_selected_bookmark)
 
+        #
+        # Reader page
+        #
         splitter = QSplitter()
         splitter.addWidget(self.web_view)
+        self.status_label = QLabel("Ready")
         splitter.setSizes([200, 800, 200])
 
-        container = QWidget()
-        layout = QVBoxLayout(container)
-        layout.addWidget(splitter, 1)
-
-        # Progress bar in footer.
-        footer = QWidget()
-        footer_layout = QHBoxLayout(footer)
-
-        self.status_label = QLabel("Ready")
+        self.status_label.setStyleSheet("""
+        QLabel {
+            color: #3f1219;
+            font-weight: 500;
+        }
+        """)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setMaximumWidth(250)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #bdb8aa;
-                border-radius: 4px;
-                background: #f4f1e8;
-                text-align: center;
-            }
 
-            QProgressBar::chunk {
-                background-color: #6b8e23;
-                border-radius: 3px;
-            }
-            """)
+        footer = QWidget()
+        footer.setStyleSheet("""
+        QWidget {
+            background-color: #fce2e1;
+            border-top: 1px solid #fad3d1;
+        }
+        """)
+        footer.setMaximumHeight(35)
+        footer_layout = QHBoxLayout(footer)
+        footer_layout.setContentsMargins(5, 2, 5, 2)
+        footer_layout.setSpacing(5)
+
+        self.progress_bar.setStyleSheet("""
+        QProgressBar {
+            border: 1px solid #fad3d1;
+            border-radius: 6px;
+            background: #fce2e1;
+            color: #3f1219;
+            text-align: center;
+        }
+
+        QProgressBar::chunk {
+            background-color: #fec0c4;
+            border-radius: 5px;
+        }
+        """)
 
         footer_layout.addWidget(self.status_label)
         footer_layout.addWidget(self.progress_bar)
 
-        layout.addWidget(footer)
+        self.reader_page = QWidget()
+        reader_layout = QVBoxLayout(self.reader_page)
+        reader_layout.addWidget(splitter)
+        reader_layout.addWidget(footer)
 
-        self.setCentralWidget(container)
+        #
+        # Stacked pages
+        #
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.home_page)
+        self.stack.addWidget(self.reader_page)
+
+        self.setCentralWidget(self.stack)
+
+        #
+        # Style sheet
+        #
+        self.setStyleSheet("""
+        QMainWindow {
+            background-color: #fef2f1;
+            color: #3f1219;
+        }
+
+        QWidget {
+            color: #3f1219;
+        }
+
+        /* Toolbar */
+        QToolBar {
+            background-color: #fce2e1;
+            border: none;
+            spacing: 4px;
+            padding: 4px;
+        }
+
+        /* Dock Widgets */
+        QDockWidget {
+            background-color: #fce2e1;
+            color: #3f1219;
+        }
+
+        QDockWidget::title {
+            background-color: #fad3d1;
+            color: #3f1219;
+            padding: 6px;
+            font-weight: bold;
+            border-bottom: 1px solid #fec0c4;
+        }
+
+        /* Lists */
+        QListWidget {
+            background-color: #fce2e1;
+            border: none;
+            color: #3f1219;
+        }
+
+        QListWidget::item {
+            padding: 3px;
+        }
+
+        QListWidget::item:selected {
+            background-color: #fec0c4;
+            color: #3f1219;
+        }
+
+        /* Buttons */
+        QPushButton {
+            background-color: #fad3d1;
+            color: #3f1219;
+            border: 1px solid #fec0c4;
+            border-radius: 6px;
+            padding: 4px 10px;
+        }
+
+        QPushButton:hover {
+            background-color: #fec0c4;
+        }
+
+        QPushButton:pressed {
+            background-color: #fce2e1;
+        }
+
+        /* Tool Button */
+        QToolButton {
+            background-color: #fad3d1;
+            color: #3f1219;
+            border: 1px solid #fec0c4;
+            border-radius: 6px;
+            padding: 4px 10px;
+        }
+
+        /* Menus */
+        QMenu {
+            background-color: #fef2f1;
+            color: #3f1219;
+            border: 1px solid #fad3d1;
+        }
+
+        QMenu::item:selected {
+            background-color: #fec0c4;
+        }
+
+        /* Splitters */
+        QSplitter::handle {
+            background-color: #fad3d1;
+        }
+
+        /* Scrollbars */
+        QScrollBar:vertical {
+            background-color: #fce2e1;
+            width: 12px;
+        }
+
+        QScrollBar::handle:vertical {
+            background-color: #fec0c4;
+            border-radius: 5px;
+            min-height: 25px;
+        }
+
+        QScrollBar:horizontal {
+            background-color: #fce2e1;
+            height: 12px;
+        }
+
+        QScrollBar::handle:horizontal {
+            background-color: #fec0c4;
+            border-radius: 5px;
+        }
+        """)
+
+        # Hide docks
+        self.chapter_dock.hide()
+        self.front_matter_dock.hide()
+        self.back_matter_dock.hide()
+        self.bookmark_dock.hide()
+        self.reader_toolbar.hide()
+
+        #
+        # Start on the home page
+        #
+        self.stack.setCurrentWidget(self.home_page)
+
+    def show_home(self):
+        """Display the home page."""
+
+        self.stack.setCurrentWidget(
+            self.home_page
+        )
+
+        self.home_toolbar.show()
+        self.reader_toolbar.hide()
+
+        self.chapter_dock.hide()
+        self.front_matter_dock.hide()
+        self.back_matter_dock.hide()
+        self.bookmark_dock.hide()
+
+    def show_library_context_menu(self, position):
+        """Show the context menu for a book tile."""
+
+        item = self.library_grid.itemAt(position)
+
+        if item is None:
+            return
+
+        menu = QMenu(self)
+
+        open_action = menu.addAction("Open Book")
+        replace_cover_action = menu.addAction("Replace Cover Image...")
+
+        menu.addSeparator()
+
+        delete_action = menu.addAction("Delete from Library")
+
+        action = menu.exec(
+            self.library_grid.mapToGlobal(position)
+        )
+
+        if action == open_action:
+            self.library_book_selected(item)
+
+        elif action == replace_cover_action:
+            self.replace_book_cover(item)
+
+        elif action == delete_action:
+            self.delete_book_from_library(item)
+            
 
     def display_html(self, content):
         """Display raw HTML content."""
@@ -228,7 +545,7 @@ class MainWindow(QMainWindow):
         html {{
             overflow-x: hidden;
             overflow-y: hidden;
-            background-color: #d9d4c7;
+            background-color: #fef2f1;
         }}
 
         body {{
@@ -239,18 +556,40 @@ class MainWindow(QMainWindow):
 
             background: white;
             box-sizing: border-box;
-            box-shadow: 0 0 12px rgba(0, 0, 0, 0.15);
-            border-radius: 4px;
+            border: 1px solid #fad3d1;
+            border-radius: 10px;
+
+            box-shadow: 0 4px 15px rgba(63, 18, 25, 0.08);
 
             font-family: Georgia, serif;
             font-size: {self.font_size}px;
-            line-height: 1.6;
+            color: #3f1219;
+            line-height: 1.7;
 
             overflow: hidden;
         }}
 
         img {{
             max-width: 100%;
+        }}
+
+        h1, h2, h3 {{
+            color: #3f1219;
+        }}
+
+        a {{
+            color: #8d4a58;
+        }}
+
+        blockquote {{
+            border-left: 4px solid #fec0c4;
+            padding-left: 15px;
+            color: #5f3f45;
+        }}
+
+        hr {{
+            border: none;
+            border-top: 1px solid #fad3d1;
         }}
 
         </style>
@@ -264,6 +603,39 @@ class MainWindow(QMainWindow):
         """
 
         self.web_view.setHtml(html)
+
+    def create_placeholder_cover(
+        self,
+        title,
+        output_path
+    ):
+        """Generate a placeholder cover image."""
+
+        width = 300
+        height = 450
+
+        pixmap = QPixmap(width, height)
+        pixmap.fill(QColor("#405c7a"))
+        painter = QPainter(pixmap)
+        painter.setPen(QColor("white"))
+
+        font = QFont("Georgia", 18)
+        font.setBold(True)
+        painter.setFont(font)
+
+        painter.drawText(
+            pixmap.rect().adjusted(
+                20,
+                20,
+                -20,
+                -20
+            ),
+            Qt.AlignCenter | Qt.TextWordWrap,
+            title
+        )
+        painter.end()
+
+        pixmap.save(output_path)
 
     def resizeEvent(self, event):
         """Handle window resizing."""
@@ -315,6 +687,40 @@ class MainWindow(QMainWindow):
             self.reader.front_matter[index]["content"]
         )
 
+    def refresh_back_matter(self):
+        """Refresh the back matter list."""
+
+        self.back_matter_list.clear()
+
+        if not self.reader:
+            return
+
+        for index, entry in enumerate(
+            self.reader.back_matter
+        ):
+            item = QListWidgetItem(
+                entry["title"]
+            )
+
+            item.setData(
+                Qt.UserRole,
+                index
+            )
+
+            self.back_matter_list.addItem(item)
+
+    def back_matter_selected(self, item):
+        """Open the selected back matter item."""
+
+        index = item.data(Qt.UserRole)
+
+        if index is None:
+            return
+
+        self.display_html(
+            self.reader.back_matter[index]["content"]
+        )
+
     def refresh_chapters(self):
         """Refresh the chapter list."""
         self.chapter_list.clear()
@@ -353,14 +759,31 @@ class MainWindow(QMainWindow):
 
     def _load_library(self):
         """Populate the library pane with known books."""
-        self.library_list.clear()
+        self.library_grid.clear()
+
+        covers_dir = Path("covers")
+        covers_dir.mkdir(exist_ok=True)
 
         for book in self.library.get_books():
             item = QListWidgetItem(book["title"])
+            cover_path = book["cover_path"]
+
+            if ( cover_path and Path(cover_path).exists()):
+                item.setIcon(QIcon(cover_path))
+            else:
+                cover_path = covers_dir / f"placeholder_{book['id']}.png"
+
+                if not cover_path.exists():
+                    self.create_placeholder_cover(
+                        book["title"],
+                        str(cover_path)
+                    )
+                item.setIcon(QIcon(str(cover_path)))
 
             # Store the database ID with the list item.
             item.setData(Qt.UserRole,book["id"])
-            self.library_list.addItem(item)
+            item.setSizeHint(QSize(170, 260))
+            self.library_grid.addItem(item)
 
     def open_book(self):
         """Open a file picker and load the selected EPUB."""
@@ -376,20 +799,153 @@ class MainWindow(QMainWindow):
 
         self.load_book(filename)
 
+    def delete_book_from_library(self, item):
+        """Remove a book and its associated data from the library."""
+
+        book_id = item.data(Qt.UserRole)
+        book = self.library.get_book(book_id)
+
+        if not book:
+            QMessageBox.warning(
+                self,
+                "Book Not Found",
+                "The selected book could not be found in the library."
+            )
+            return
+
+        title = book["title"]
+
+        reply = QMessageBox.question(
+            self,
+            "Delete Book",
+            (
+                f'Remove "{title}" from your library?\n\n'
+                "This will delete its saved reading progress, "
+                "bookmarks, and library cover image.\n\n"
+                "The original EPUB file will not be deleted."
+            ),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            cover_path = (
+                book["cover_path"]
+                if "cover_path" in book.keys()
+                else None
+            )
+
+            self.bookmarks.delete_bookmarks_for_book(book_id)
+
+            # Delete the book record.
+            self.library.delete_book(book_id)
+
+            # Delete only cover files managed by this application.
+            self.delete_managed_cover(cover_path)
+
+            # Clear the current reader state if this was the open book.
+            if self.current_book_id == book_id:
+                self.reader = None
+                self.current_book_id = None
+
+                self.current_page = 0
+                self.total_pages = 1
+
+                self.go_to_last_page = False
+                self.resize_progress = None
+
+                self.chapter_list.clear()
+                self.front_matter_list.clear()
+                self.back_matter_list.clear()
+                self.bookmark_list.clear()
+
+                self.status_label.setText("Ready")
+                self.progress_bar.setValue(0)
+
+                self.web_view.setHtml(
+                    """
+                    <html>
+                    <body style="background-color:#fef2f1;">
+                    </body>
+                    </html>
+                    """
+                )
+
+                self.show_home()
+                
+
+            # Prevent the deleted book from reopening next session.
+            settings = self.settings.load()
+
+            if settings.get("last_book_id") == book_id:
+                settings.pop("last_book_id", None)
+                self.settings.save(settings)
+
+            self._load_library()
+
+            QMessageBox.information(
+                self,
+                "Book Removed",
+                f'"{title}" was removed from your library.'
+            )
+
+        except Exception as ex:
+            traceback.print_exc()
+
+            QMessageBox.critical(
+                self,
+                "Delete Book Error",
+                f'Could not remove "{title}" from the library.\n\n{ex}'
+            )
+
+    def delete_managed_cover(self, cover_path):
+        """Delete a cover only if it is inside the application covers folder."""
+
+        if not cover_path:
+            return
+
+        cover = Path(cover_path)
+        covers_dir = Path("covers").resolve()
+
+        try:
+            resolved_cover = cover.resolve()
+            resolved_cover.relative_to(covers_dir)
+        except (ValueError, OSError):
+            # The cover is outside the application-managed covers folder.
+            return
+
+        if resolved_cover.is_file():
+            resolved_cover.unlink()
+
     def load_book(self, path):
         """Load a book and restore its saved reading position."""
         try:
+            self.chapter_dock.show()
+            self.front_matter_dock.show()
+            self.back_matter_dock.show()
+            self.bookmark_dock.show()
+            self.home_toolbar.show()
+            self.reader_toolbar.show()
+            self.stack.setCurrentWidget(self.reader_page)
+
             self.reader = EpubReader(path)
 
             title = self.reader.title
-
-            book_id = self.library.add_book(path, title)
+            cover_path = self.reader.extract_cover("covers")
+            book_id = self.library.add_book(path, title, cover_path)
             self.current_book_id = book_id
 
             book = self.library.get_book(book_id)
 
             self.save_last_book()
             self.refresh_bookmarks()
+
+            # debugging
+            print("book_id:", book_id)
+            print("book:", book)
 
             # Restore the last chapter/page read.
             chapter = book["last_chapter"]
@@ -400,7 +956,24 @@ class MainWindow(QMainWindow):
             self.reader.current_chapter = chapter
             self.current_page = page
             self.refresh_front_matter()
+            self.refresh_back_matter()
             self.refresh_chapters()
+
+            # debugging
+            print(
+                "chapter_count:",
+                self.reader.chapter_count
+            )
+
+            print(
+                "len(chapters):",
+                len(self.reader.chapters)
+            )
+
+            print(
+                "current_chapter:",
+                self.reader.current_chapter
+            )
             self.display_current_chapter()
 
             self.status_label.setText(title)
@@ -408,6 +981,7 @@ class MainWindow(QMainWindow):
             self._load_library()
 
         except Exception as ex:
+            traceback.print_exc()
             QMessageBox.critical(self, "Error", str(ex))
 
     def load_last_book(self):
@@ -435,6 +1009,8 @@ class MainWindow(QMainWindow):
 
     def calculate_pages(self):
         """Calculate the number of virtual pages in the current chapter."""
+        if not self.reader:
+            return
 
         self.web_view.page().runJavaScript(
             """
@@ -458,7 +1034,7 @@ class MainWindow(QMainWindow):
 
     def on_page_height(self, height):
         """Compute total pages from the rendered chapter height."""
-        if not height:
+        if not self.reader or not height:
             return
 
         page_height = self.get_page_height()
@@ -490,9 +1066,45 @@ class MainWindow(QMainWindow):
 
         self.show_current_page()
 
+    def replace_book_cover(self, item):
+        """Replace a book cover with a user-supplied PNG."""
+
+        import shutil
+
+        book_id = item.data(Qt.UserRole)
+
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Cover Image",
+            "",
+            "PNG Images (*.png, *jpg, *.jpeg, *.webp)"
+        )
+
+        if not filename:
+            return
+
+        covers_dir = Path("covers")
+        covers_dir.mkdir(exist_ok=True)
+
+        new_cover = covers_dir / f"user_{book_id}.png"
+
+        shutil.copy2(
+            filename,
+            new_cover
+        )
+
+        self.library.update_cover_path(
+            book_id,
+            str(new_cover)
+        )
+
+        self._load_library()
 
     def show_current_page(self):
         """Display the current page within the chapter."""
+        if not self.reader:
+            return
+
         page_height = self.get_page_height()
 
         # Scroll to the appropriate page offset.

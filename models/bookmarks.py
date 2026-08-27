@@ -77,6 +77,19 @@ class BookmarkModel:
 
         self.conn.commit()
 
+    def delete_bookmarks_for_book(self, book_id):
+        """Delete all bookmarks associated with a book."""
+
+        self.conn.execute(
+            """
+            DELETE FROM bookmarks
+            WHERE book_id = ?
+            """,
+            (book_id,)
+        )
+
+        self.conn.commit()
+
     def get_bookmarks(self, book_id):
         return self.conn.execute(
             """

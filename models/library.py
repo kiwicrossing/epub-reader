@@ -19,10 +19,18 @@ class LibraryModel:
             id INTEGER PRIMARY KEY,
             path TEXT UNIQUE,
             title TEXT,
+            cover_path TEXT,
             last_chapter INTEGER DEFAULT 0,
             last_page INTEGER DEFAULT 0
         )
         """)
+
+        try:
+            self.conn.execute(
+                "ALTER TABLE books ADD COLUMN cover_path TEXT"
+            )
+        except sqlite3.OperationalError:
+            pass
 
         try:
             self.conn.execute(
@@ -33,26 +41,68 @@ class LibraryModel:
 
         self.conn.commit()
 
-    def add_book(self, path, title):
+    def add_book(
+        self,
+        path,
+        title,
+        cover_path=None
+    ):
         self.conn.execute(
             """
             INSERT OR IGNORE INTO books(
                 path,
-                title
+                title,
+                cover_path
             )
-            VALUES (?, ?)
+            VALUES (?, ?, ?)
             """,
-            (path, title),
+            (
+                path,
+                title,
+                cover_path
+            ),
+        )
+
+        self.conn.execute(
+            """
+            UPDATE books
+            SET
+                title=?,
+                cover_path=?
+            WHERE path=?
+            """,
+            (
+                title,
+                cover_path,
+                path
+            ),
         )
 
         self.conn.commit()
 
         row = self.conn.execute(
-            "SELECT id FROM books WHERE path=?",
+            """
+            SELECT id
+            FROM books
+            WHERE path=?
+            """,
             (path,),
         ).fetchone()
 
         return row["id"]
+
+    def delete_book(self, book_id):
+        """Delete a book from the library database."""
+
+        self.conn.execute(
+            """
+            DELETE FROM books
+            WHERE id = ?
+            """,
+            (book_id,)
+        )
+
+        self.conn.commit()
 
     def get_books(self):
         return self.conn.execute(
@@ -82,6 +132,27 @@ class LibraryModel:
             (
                 chapter,
                 page,
+                book_id
+            ),
+        )
+
+        self.conn.commit()
+
+    def update_cover_path(
+        self,
+        book_id,
+        cover_path
+    ):
+        """Update the cover image path for a book."""
+
+        self.conn.execute(
+            """
+            UPDATE books
+            SET cover_path=?
+            WHERE id=?
+            """,
+            (
+                cover_path,
                 book_id
             ),
         )

@@ -7,10 +7,13 @@ env
 *.env
 
 /data/settings.json
+covers/
 
 __pycache__/
 
 db.sqlite3
 *.sqlite3
+/data/app.db
 
+epubs/
 *.epub
