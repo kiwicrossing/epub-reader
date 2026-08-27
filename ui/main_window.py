@@ -98,7 +98,7 @@ class MainWindow(
 
         self._apply_styles()
         self._hide_reader_widgets()
-        
+
         self.stack.setCurrentWidget(self.home_page)
 
     def _create_toolbars(self):
@@ -181,6 +181,7 @@ class MainWindow(
         """)
 
         self.library_grid = QListWidget()
+        self.currently_reading_grid = QListWidget()
 
         self.library_grid.setContextMenuPolicy(Qt.CustomContextMenu)
         self.library_grid.customContextMenuRequested.connect(self.show_library_context_menu)
@@ -209,7 +210,16 @@ class MainWindow(
         """)
 
         self.library_grid.itemDoubleClicked.connect(self.library_book_selected)
+        self.currently_reading_grid.itemDoubleClicked.connect(self.library_book_selected)
 
+        currently_reading_title = QLabel("Currently Reading")
+        home_layout.addWidget(currently_reading_title)
+        home_layout.addWidget(self.currently_reading_grid)
+
+        self.currently_reading_grid.setFlow(QListView.LeftToRight)
+        self.currently_reading_grid.setWrapping(False)
+
+        library_title = QLabel("Library")
         home_layout.addWidget(library_title)
         home_layout.addWidget(self.library_grid)
 

@@ -67,6 +67,7 @@ class Library:
     def _load_library(self):
         """Populate the library grid with book tiles and progress bars."""
 
+        self.currently_reading_grid.clear()
         self.library_grid.clear()
 
         covers_dir = Path("covers")
@@ -77,8 +78,7 @@ class Library:
             title = book["title"]
             cover_path = book["cover_path"]
             pages_read = book["pages_read"]
-            pages_read = book["pages_read"]
-            total_pages = book["total_pages"]
+            total_pages = book["total_pages"]            
 
             if not cover_path or not Path(cover_path).exists():
                 cover_path = (covers_dir / f"placeholder_{book_id}.png")
@@ -92,6 +92,8 @@ class Library:
                 else 0
             )
             progress = max(0, min(100, progress or 0))
+
+
 
             pages_read = (
                 book["pages_read"]
@@ -110,7 +112,13 @@ class Library:
             item = QListWidgetItem()
             item.setData(Qt.UserRole, book_id)
             item.setSizeHint(QSize(180, 300))
-            self.library_grid.addItem(item)
+            # self.library_grid.addItem(item)
+            if 0 < progress < 100:
+                target = self.currently_reading_grid
+            else:
+                target = self.library_grid
+
+            target.addItem(item)
 
             #
             # Custom book tile
@@ -193,7 +201,7 @@ class Library:
             tile_layout.addWidget(title_label)
             tile_layout.addWidget(progress_bar)
 
-            self.library_grid.setItemWidget(item, tile)
+            target.setItemWidget(item, tile)
 
     def open_book(self):
         """Open a file picker and load the selected EPUB."""
