@@ -25,18 +25,14 @@ class Settings:
                 SETTINGS_FILE,
                 "r",
                 encoding="utf-8"
-            ) as f:
-                settings = json.load(f)
+            ) as f: settings = json.load(f)
 
             for key, value in self.DEFAULT_SETTINGS.items():
                 settings.setdefault(key, value)
 
             return settings
 
-        except (
-            json.JSONDecodeError,
-            FileNotFoundError
-        ):
+        except (json.JSONDecodeError, FileNotFoundError):
             return self.DEFAULT_SETTINGS.copy()
 
     def save(self, settings):
@@ -45,8 +41,4 @@ class Settings:
             "w",
             encoding="utf-8"
         ) as f:
-            json.dump(
-                settings,
-                f,
-                indent=4
-            )
+            json.dump(settings, f, indent=4)

@@ -28,24 +28,10 @@ labels = [
 ]
 
 pipeline = Pipeline([
-    (
-        "tfidf",
-        TfidfVectorizer(
-            ngram_range=(1, 2)
-        ),
-    ),
-    (
-        "classifier",
-        LogisticRegression(),
-    ),
+    ("tfidf", TfidfVectorizer(ngram_range=(1, 2)),),
+    ("classifier", LogisticRegression(),),
 ])
 
-pipeline.fit(
-    titles,
-    labels,
-)
+pipeline.fit(titles, labels,)
 
-joblib.dump(
-    pipeline,
-    "trained_model.pkl",
-)
+joblib.dump(pipeline, "trained_model.pkl",)

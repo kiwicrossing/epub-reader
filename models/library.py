@@ -26,16 +26,12 @@ class LibraryModel:
         """)
 
         try:
-            self.conn.execute(
-                "ALTER TABLE books ADD COLUMN cover_path TEXT"
-            )
+            self.conn.execute("ALTER TABLE books ADD COLUMN cover_path TEXT")
         except sqlite3.OperationalError:
             pass
 
         try:
-            self.conn.execute(
-                "ALTER TABLE books ADD COLUMN last_page INTEGER DEFAULT 0"
-            )
+            self.conn.execute("ALTER TABLE books ADD COLUMN last_page INTEGER DEFAULT 0")
         except sqlite3.OperationalError:
             pass
 

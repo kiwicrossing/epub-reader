@@ -93,7 +93,6 @@ class MainWindow(QMainWindow):
         open_btn = QPushButton("Open")
 
         # Top bar buttons.
-        # open_btn = QPushButton("Open")
         next_chapter_btn = QPushButton("Next Chapter")
         prev_chapter_btn = QPushButton("Previous Chapter")
         next_page_btn = QPushButton("Next Page")
@@ -127,9 +126,6 @@ class MainWindow(QMainWindow):
         #
         # Toolbar order
         #
-        # toolbar.addWidget(open_btn)
-        # toolbar.addWidget(home_btn)
-        # toolbar.addWidget(open_btn)
         self.home_toolbar.addWidget(home_btn)
         self.home_toolbar.addWidget(open_btn)
         self.reader_toolbar.addWidget(next_chapter_btn)
@@ -143,7 +139,6 @@ class MainWindow(QMainWindow):
         #
         # Toolbar actions
         #
-        # open_btn.clicked.connect(self.open_book)
         home_btn.clicked.connect(self.show_home)
         open_btn.clicked.connect(self.open_book)
         next_chapter_btn.clicked.connect(self.next_chapter)
@@ -229,14 +224,12 @@ class MainWindow(QMainWindow):
         self.front_matter_dock.setWidget(self.front_matter_list)
         self.addDockWidget(Qt.LeftDockWidgetArea,self.front_matter_dock)
 
-        # Back Matter
         self.back_matter_list = QListWidget()
         self.back_matter_list.itemDoubleClicked.connect(self.back_matter_selected)
         self.back_matter_dock = QDockWidget("Back Matter")
         self.back_matter_dock.setWidget(self.back_matter_list)
         self.addDockWidget(Qt.LeftDockWidgetArea,self.back_matter_dock)
 
-        # Put Back Matter underneath Front Matter
         self.splitDockWidget(
             self.front_matter_dock,
             self.back_matter_dock,
@@ -491,9 +484,7 @@ class MainWindow(QMainWindow):
     def show_home(self):
         """Display the home page."""
 
-        self.stack.setCurrentWidget(
-            self.home_page
-        )
+        self.stack.setCurrentWidget(self.home_page)
 
         self.home_toolbar.show()
         self.reader_toolbar.hide()
@@ -505,7 +496,6 @@ class MainWindow(QMainWindow):
 
     def show_library_context_menu(self, position):
         """Show the context menu for a book tile."""
-
         item = self.library_grid.itemAt(position)
 
         if item is None:
@@ -520,9 +510,7 @@ class MainWindow(QMainWindow):
 
         delete_action = menu.addAction("Delete from Library")
 
-        action = menu.exec(
-            self.library_grid.mapToGlobal(position)
-        )
+        action = menu.exec(self.library_grid.mapToGlobal(position))
 
         if action == open_action:
             self.library_book_selected(item)
@@ -662,17 +650,9 @@ class MainWindow(QMainWindow):
         if not self.reader:
             return
 
-        for index, entry in enumerate(
-            self.reader.front_matter
-        ):
-            item = QListWidgetItem(
-                entry["title"]
-            )
-
-            item.setData(
-                Qt.UserRole,
-                index
-            )
+        for index, entry in enumerate(self.reader.front_matter):
+            item = QListWidgetItem(entry["title"])
+            item.setData(Qt.UserRole, index)
 
             self.front_matter_list.addItem(item)
 
@@ -683,9 +663,7 @@ class MainWindow(QMainWindow):
         if index is None:
             return
 
-        self.display_html(
-            self.reader.front_matter[index]["content"]
-        )
+        self.display_html(self.reader.front_matter[index]["content"])
 
     def refresh_back_matter(self):
         """Refresh the back matter list."""
@@ -695,17 +673,9 @@ class MainWindow(QMainWindow):
         if not self.reader:
             return
 
-        for index, entry in enumerate(
-            self.reader.back_matter
-        ):
-            item = QListWidgetItem(
-                entry["title"]
-            )
-
-            item.setData(
-                Qt.UserRole,
-                index
-            )
+        for index, entry in enumerate(self.reader.back_matter):
+            item = QListWidgetItem(entry["title"])
+            item.setData(Qt.UserRole, index)
 
             self.back_matter_list.addItem(item)
 
@@ -717,9 +687,7 @@ class MainWindow(QMainWindow):
         if index is None:
             return
 
-        self.display_html(
-            self.reader.back_matter[index]["content"]
-        )
+        self.display_html(self.reader.back_matter[index]["content"])
 
     def refresh_chapters(self):
         """Refresh the chapter list."""
@@ -732,10 +700,7 @@ class MainWindow(QMainWindow):
             title = self.reader.chapters[index]["title"]
 
             item = QListWidgetItem(title)
-            item.setData(
-                Qt.UserRole,
-                index
-            )
+            item.setData(Qt.UserRole, index)
 
             self.chapter_list.addItem(item)
 
@@ -768,7 +733,7 @@ class MainWindow(QMainWindow):
             item = QListWidgetItem(book["title"])
             cover_path = book["cover_path"]
 
-            if ( cover_path and Path(cover_path).exists()):
+            if (cover_path and Path(cover_path).exists()):
                 item.setIcon(QIcon(cover_path))
             else:
                 cover_path = covers_dir / f"placeholder_{book['id']}.png"
@@ -959,23 +924,7 @@ class MainWindow(QMainWindow):
             self.refresh_back_matter()
             self.refresh_chapters()
 
-            # debugging
-            print(
-                "chapter_count:",
-                self.reader.chapter_count
-            )
-
-            print(
-                "len(chapters):",
-                len(self.reader.chapters)
-            )
-
-            print(
-                "current_chapter:",
-                self.reader.current_chapter
-            )
             self.display_current_chapter()
-
             self.status_label.setText(title)
 
             self._load_library()
@@ -1002,7 +951,6 @@ class MainWindow(QMainWindow):
     def save_last_book(self):
         """Persist the currently opened book."""
         settings = self.settings.load()
-
         settings["last_book_id"] = self.current_book_id
 
         self.settings.save(settings)
@@ -1026,11 +974,7 @@ class MainWindow(QMainWindow):
 
     def get_page_height(self):
         """Return the usable page height."""
-
-        return max(
-            100,
-            self.web_view.height()
-        )
+        return max(100, self.web_view.height())
 
     def on_page_height(self, height):
         """Compute total pages from the rendered chapter height."""
@@ -1069,8 +1013,6 @@ class MainWindow(QMainWindow):
     def replace_book_cover(self, item):
         """Replace a book cover with a user-supplied PNG."""
 
-        import shutil
-
         book_id = item.data(Qt.UserRole)
 
         filename, _ = QFileDialog.getOpenFileName(
@@ -1088,15 +1030,9 @@ class MainWindow(QMainWindow):
 
         new_cover = covers_dir / f"user_{book_id}.png"
 
-        shutil.copy2(
-            filename,
-            new_cover
-        )
+        shutil.copy2(filename, new_cover)
 
-        self.library.update_cover_path(
-            book_id,
-            str(new_cover)
-        )
+        self.library.update_cover_path(book_id, str(new_cover))
 
         self._load_library()
 
@@ -1217,20 +1153,12 @@ class MainWindow(QMainWindow):
 
         menu = QMenu(self)
 
-        delete_action = menu.addAction(
-            "Delete Bookmark"
-        )
-
-        action = menu.exec(
-            self.bookmark_list.mapToGlobal(position)
-        )
+        delete_action = menu.addAction("Delete Bookmark")
+        action = menu.exec(self.bookmark_list.mapToGlobal(position))
 
         if action == delete_action:
             bookmark_id = item.data(Qt.UserRole)
-
-            self.bookmarks.delete_bookmark(
-                bookmark_id
-            )
+            self.bookmarks.delete_bookmark(bookmark_id)
 
             self.refresh_bookmarks()
 
@@ -1282,9 +1210,7 @@ class MainWindow(QMainWindow):
         """Jump to the selected bookmark."""
         row = self.bookmark_list.row(item)
 
-        bookmarks = self.bookmarks.get_bookmarks(
-            self.current_book_id
-        )
+        bookmarks = self.bookmarks.get_bookmarks(self.current_book_id)
 
         if row >= len(bookmarks):
             return
@@ -1313,15 +1239,10 @@ class MainWindow(QMainWindow):
                 f"Page {bookmark['page'] + 1}"
             )
 
-            item.setData(
-                Qt.UserRole,
-                bookmark["id"]
-            )
+            item.setData(Qt.UserRole, bookmark["id"])
 
             # Hover to see timestamp created
-            item.setToolTip(
-                f"Created: {bookmark['created_at']}"
-            )
+            item.setToolTip(f"Created: {bookmark['created_at']}")
 
             self.bookmark_list.addItem(item)
 

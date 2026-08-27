@@ -51,11 +51,7 @@ class EpubReader:
         filename = filename.rsplit(".", 1)[0]
 
         # Remove leading numbers
-        filename = re.sub(
-            r"^\d+[_-]*",
-            "",
-            filename
-        )
+        filename = re.sub(r"^\d+[_-]*", "", filename)
 
         # Replace separators
         filename = filename.replace("_", " ")
@@ -100,10 +96,7 @@ class EpubReader:
     def extract_cover(self, output_dir):
         """Extract and save the EPUB cover image."""
 
-        os.makedirs(
-            output_dir,
-            exist_ok=True
-        )
+        os.makedirs(output_dir, exist_ok=True)
 
         # Method 1: OPF metadata
         cover_meta = self.book.get_metadata(
@@ -112,14 +105,10 @@ class EpubReader:
         )
 
         if cover_meta:
-            cover_id = cover_meta[0][1].get(
-                "content"
-            )
+            cover_id = cover_meta[0][1].get("content")
 
             if cover_id:
-                item = self.book.get_item_with_id(
-                    cover_id
-                )
+                item = self.book.get_item_with_id(cover_id)
 
                 if item:
                     path = os.path.join(
@@ -140,9 +129,7 @@ class EpubReader:
             if (
                 "cover" in name
                 and
-                item.media_type.startswith(
-                    "image/"
-                )
+                item.media_type.startswith("image/")
             ):
                 path = os.path.join(
                     output_dir,
@@ -157,9 +144,7 @@ class EpubReader:
         # Method 3: First image in the EPUB
         for item in self.book.get_items():
 
-            if item.media_type.startswith(
-                "image/"
-            ):
+            if item.media_type.startswith("image/"):
                 path = os.path.join(
                     output_dir,
                     f"{self.title}.jpg"
@@ -295,26 +280,6 @@ class EpubReader:
                 errors="ignore"
             )
 
-            # # Try to find a heading.
-            # title_match = re.search(
-            #     r"<h[1-3][^>]*>(.*?)</h[1-3]>",
-            #     html,
-            #     re.IGNORECASE | re.DOTALL
-            # )
-
-            # if title_match:
-            #     title = title_match.group(1)
-
-            #     # Remove embedded HTML tags.
-            #     title = re.sub(
-            #         r"<[^>]+>",
-            #         "",
-            #         title
-            #     ).strip()
-
-            # else:
-            #     title = ""
-
             filename = item.get_name()
 
             filename_lower = filename.lower()
@@ -334,11 +299,7 @@ class EpubReader:
 
             # Skip empty navigation pages
             if not title.strip():
-                clean_text = re.sub(
-                    r"<[^>]+>",
-                    "",
-                    html
-                ).strip()
+                clean_text = re.sub(r"<[^>]+>", "", html).strip()
 
                 if len(clean_text) < 100:
                     continue
@@ -386,13 +347,7 @@ class EpubReader:
         if not self.chapters:
             return ""
 
-        return self.chapters[
-            self.current_chapter
-        ]["title"]
-
-    # def get_current_chapter(self):
-    #     """Return HTML for the current chapter."""
-    #     return self.chapters[self.current_chapter]["content"]
+        return self.chapters[self.current_chapter]["title"]
 
     def get_current_chapter(self):
         """Return HTML for the current chapter."""
@@ -410,9 +365,7 @@ class EpubReader:
     def next_chapter(self):
         """Move to the next chapter."""
 
-        if self.current_chapter >= (
-            len(self.chapters) - 1
-        ):
+        if self.current_chapter >= (len(self.chapters) - 1):
             return False
 
         self.current_chapter += 1

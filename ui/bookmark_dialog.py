@@ -20,16 +20,12 @@ class BookmarkDialog(QDialog):
         self.list_widget = QListWidget()
 
         for bookmark in bookmarks:
-            self.list_widget.addItem(
-                f"{bookmark['id']} | Chapter {bookmark['chapter']}"
-            )
+            self.list_widget.addItem(f"{bookmark['id']} | Chapter {bookmark['chapter']}")
 
         layout.addWidget(self.list_widget)
 
         open_button = QPushButton("Open Bookmark")
-        open_button.clicked.connect(
-            self.open_selected
-        )
+        open_button.clicked.connect(self.open_selected)
 
         layout.addWidget(open_button)
 

@@ -46,18 +46,10 @@ class SectionClassifier:
                     ngram_range=(1, 2),
                 ),
             ),
-            (
-                "clf",
-                LogisticRegression(),
-            ),
+            ("clf", LogisticRegression(),),
         ])
 
-        self.model.fit(
-            titles,
-            labels,
-        )
+        self.model.fit(titles, labels,)
 
     def predict(self, title):
-        return self.model.predict(
-            [title]
-        )[0]
+        return self.model.predict([title])[0]
