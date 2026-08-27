@@ -173,10 +173,10 @@ class MainWindow(QMainWindow):
         self.library_grid.setResizeMode(QListWidget.Adjust)
         self.library_grid.setMovement(QListView.Static)
         self.library_grid.setSpacing(25)
-        self.library_grid.setGridSize(QSize(180, 280))
+        self.library_grid.setGridSize(QSize(180, 310))
         self.library_grid.setWordWrap(True)
 
-        self.library_grid.setIconSize(QSize(150, 220))
+        # self.library_grid.setIconSize(QSize(150, 220))
         self.library_grid.setSpacing(20)
 
         self.library_grid.setStyleSheet("""
@@ -483,6 +483,7 @@ class MainWindow(QMainWindow):
 
     def show_home(self):
         """Display the home page."""
+        self._load_library()
 
         self.stack.setCurrentWidget(self.home_page)
 
@@ -723,32 +724,113 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(int(progress))
 
     def _load_library(self):
-        """Populate the library pane with known books."""
+        """Populate the library grid with book tiles and progress bars."""
+
         self.library_grid.clear()
 
         covers_dir = Path("covers")
         covers_dir.mkdir(exist_ok=True)
 
         for book in self.library.get_books():
-            item = QListWidgetItem(book["title"])
+            book_id = book["id"]
+            title = book["title"]
             cover_path = book["cover_path"]
 
-            if (cover_path and Path(cover_path).exists()):
-                item.setIcon(QIcon(cover_path))
-            else:
-                cover_path = covers_dir / f"placeholder_{book['id']}.png"
+            if not cover_path or not Path(cover_path).exists():
+                cover_path = (covers_dir / f"placeholder_{book_id}.png")
 
                 if not cover_path.exists():
-                    self.create_placeholder_cover(
-                        book["title"],
-                        str(cover_path)
-                    )
-                item.setIcon(QIcon(str(cover_path)))
+                    self.create_placeholder_cover(title, str(cover_path))
 
-            # Store the database ID with the list item.
-            item.setData(Qt.UserRole,book["id"])
-            item.setSizeHint(QSize(170, 260))
+            progress = (
+                book["progress_percent"]
+                if "progress_percent" in book.keys()
+                else 0
+            )
+            progress = max(0, min(100, progress or 0))
+
+            #
+            # QListWidget item
+            #
+            item = QListWidgetItem()
+            item.setData(Qt.UserRole, book_id)
+            item.setSizeHint(QSize(180, 300))
             self.library_grid.addItem(item)
+
+            #
+            # Custom book tile
+            #
+            tile = QWidget()
+            tile.setObjectName("bookTile")
+
+            tile_layout = QVBoxLayout(tile)
+            tile_layout.setContentsMargins(
+                8,
+                8,
+                8,
+                8
+            )
+            tile_layout.setSpacing(5)
+
+            #
+            # Cover
+            #
+            cover_label = QLabel()
+            cover_label.setAlignment(Qt.AlignCenter)
+            cover_label.setFixedSize(150, 220)
+
+            cover_pixmap = QPixmap(str(cover_path))
+
+            if not cover_pixmap.isNull():
+                cover_label.setPixmap(
+                    cover_pixmap.scaled(
+                        150,
+                        220,
+                        Qt.KeepAspectRatio,
+                        Qt.SmoothTransformation
+                    )
+                )
+
+            #
+            # Title
+            #
+            title_label = QLabel(title)
+            title_label.setAlignment(Qt.AlignCenter)
+            title_label.setWordWrap(True)
+            title_label.setMaximumHeight(38)
+            title_label.setToolTip(title)
+
+            #
+            # Progress bar
+            #
+            progress_bar = QProgressBar()
+            progress_bar.setRange(0, 100)
+            progress_bar.setValue(progress)
+            progress_bar.setFormat(f"{progress}%")
+            progress_bar.setTextVisible(True)
+            progress_bar.setFixedHeight(14)
+
+            progress_bar.setStyleSheet("""
+                QProgressBar {
+                    border: 1px solid #fad3d1;
+                    border-radius: 6px;
+                    background-color: #fce2e1;
+                    color: #3f1219;
+                    font-size: 9px;
+                    text-align: center;
+                }
+
+                QProgressBar::chunk {
+                    background-color: #d98791;
+                    border-radius: 5px;
+                }
+            """)
+
+            tile_layout.addWidget(cover_label, alignment=Qt.AlignCenter)
+            tile_layout.addWidget(title_label)
+            tile_layout.addWidget(progress_bar)
+
+            self.library_grid.setItemWidget(item, tile)
 
     def open_book(self):
         """Open a file picker and load the selected EPUB."""
@@ -1061,6 +1143,8 @@ class MainWindow(QMainWindow):
             f"{self.reader.current_chapter_title} | " # Chapter title
             f"Page {self.current_page + 1}/{self.total_pages} | " # Page number
         )
+
+        self.save_position()
         
 
     def display_current_chapter(self):
@@ -1133,14 +1217,28 @@ class MainWindow(QMainWindow):
             self.save_position()
 
     def save_position(self):
-        """Save the current reading position."""
+        """Save the current reading position and progress."""
         if not self.reader or not self.current_book_id:
             return
+
+        chapter_count = max(1, self.reader.chapter_count)
+        total_pages = max(1, self.total_pages)
+
+        # Include the current page in the chapter progress so that
+        # the final page of the final chapter reaches 100%.
+        page_progress = min(1.0, (self.current_page + 1) / total_pages)
+        overall_progress = (
+            (self.reader.current_chapter + page_progress)
+            / chapter_count
+        ) * 100
+
+        progress_percent = max(0, min(100, round(overall_progress)))
 
         self.library.save_position(
             self.current_book_id,
             self.reader.current_chapter,
-            self.current_page
+            self.current_page,
+            progress_percent
         )
 
     def show_bookmark_context_menu(self, position):
