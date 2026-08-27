@@ -90,10 +90,18 @@ class MainWindow(
 
     def _create_ui(self):
         """Create and configure all UI elements."""
+        self._create_toolbars()
+        self._create_home_page()
+        self._create_reader_page()
+        self._create_shortcuts()
+        self._create_stacked_pages()
 
-        #
-        # Toolbar
-        #
+        self._apply_styles()
+        self._hide_reader_widgets()
+        
+        self.stack.setCurrentWidget(self.home_page)
+
+    def _create_toolbars(self):
         self.home_toolbar = QToolBar()
         self.addToolBar(self.home_toolbar)
 
@@ -159,9 +167,7 @@ class MainWindow(
         view_bookmarks_btn.clicked.connect(self.show_bookmarks)
         bookmark_btn.clicked.connect(self.add_bookmark)
 
-        #
-        # Home page
-        #
+    def _create_home_page(self):
         self.home_page = QWidget()
         home_layout = QVBoxLayout(self.home_page)
         library_title = QLabel("My Library")
@@ -207,6 +213,7 @@ class MainWindow(
         home_layout.addWidget(library_title)
         home_layout.addWidget(self.library_grid)
 
+    def _create_reader_page(self):
         self.bookmark_list = QListWidget()
 
         self.web_view = QWebEngineView()
@@ -291,30 +298,6 @@ class MainWindow(
         self.bookmark_list.customContextMenuRequested.connect(self.show_bookmark_context_menu)
 
         #
-        # Keyboard shortcuts for page navigation.
-        # 
-        next_shortcut = QShortcut(QKeySequence(Qt.Key_Right),self)
-        next_shortcut.activated.connect(self.next_page)
-
-        prev_shortcut = QShortcut(QKeySequence(Qt.Key_Left),self)
-        prev_shortcut.activated.connect(self.previous_page)
-
-        next_chapter_shortcut = QShortcut(QKeySequence("Ctrl+Right"),self)
-        next_chapter_shortcut.activated.connect(self.next_chapter)
-
-        prev_chapter_shortcut = QShortcut(QKeySequence("Ctrl+Left"),self)
-        prev_chapter_shortcut.activated.connect(self.previous_chapter)
-
-        space_shortcut = QShortcut(QKeySequence(Qt.Key_Space),self)
-        space_shortcut.activated.connect(self.next_page)
-
-        back_space_shortcut = QShortcut(QKeySequence("Shift+Space"),self)
-        back_space_shortcut.activated.connect(self.previous_page)
-
-        delete_shortcut = QShortcut(QKeySequence(Qt.Key_Delete),self.bookmark_list)
-        delete_shortcut.activated.connect(self.delete_selected_bookmark)
-
-        #
         # Reader page
         #
         splitter = QSplitter()
@@ -379,18 +362,36 @@ class MainWindow(
         reader_layout.addWidget(splitter)
         reader_layout.addWidget(footer)
 
-        #
-        # Stacked pages
-        #
+    def _create_shortcuts(self):
+        next_shortcut = QShortcut(QKeySequence(Qt.Key_Right),self)
+        next_shortcut.activated.connect(self.next_page)
+
+        prev_shortcut = QShortcut(QKeySequence(Qt.Key_Left),self)
+        prev_shortcut.activated.connect(self.previous_page)
+
+        next_chapter_shortcut = QShortcut(QKeySequence("Ctrl+Right"),self)
+        next_chapter_shortcut.activated.connect(self.next_chapter)
+
+        prev_chapter_shortcut = QShortcut(QKeySequence("Ctrl+Left"),self)
+        prev_chapter_shortcut.activated.connect(self.previous_chapter)
+
+        space_shortcut = QShortcut(QKeySequence(Qt.Key_Space),self)
+        space_shortcut.activated.connect(self.next_page)
+
+        back_space_shortcut = QShortcut(QKeySequence("Shift+Space"),self)
+        back_space_shortcut.activated.connect(self.previous_page)
+
+        delete_shortcut = QShortcut(QKeySequence(Qt.Key_Delete),self.bookmark_list)
+        delete_shortcut.activated.connect(self.delete_selected_bookmark)
+
+    def _create_stacked_pages(self):
         self.stack = QStackedWidget()
         self.stack.addWidget(self.home_page)
         self.stack.addWidget(self.reader_page)
 
         self.setCentralWidget(self.stack)
 
-        #
-        # Style sheet
-        #
+    def _apply_styles(self):
         self.setStyleSheet("""
         QMainWindow {
             background-color: #fef2f1;
@@ -504,17 +505,12 @@ class MainWindow(
         }
         """)
 
-        # Hide docks
+    def _hide_reader_widgets(self):
         self.chapter_dock.hide()
         self.front_matter_dock.hide()
         self.back_matter_dock.hide()
         self.bookmark_dock.hide()
         self.reader_toolbar.hide()
-
-        #
-        # Start on the home page
-        #
-        self.stack.setCurrentWidget(self.home_page)
 
 
     def load_book(self, path):
