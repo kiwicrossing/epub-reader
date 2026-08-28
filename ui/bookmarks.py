@@ -21,11 +21,7 @@ class Bookmark:
         )
 
         for bookmark in bookmarks:
-            item = QListWidgetItem(
-                f"Chapter {bookmark['chapter'] + 1}, "
-                f"Page {bookmark['page'] + 1}"
-            )
-
+            item = QListWidgetItem(bookmark["name"])
             item.setData(Qt.UserRole, bookmark["id"])
 
             # Hover to see timestamp created
@@ -56,11 +52,13 @@ class Bookmark:
         if not self.reader or not self.current_book_id:
             return
 
+        chapter_title = self.reader.chapters[self.reader.current_chapter]["title"]
+
         self.bookmarks.add_bookmark(
             self.current_book_id,
             self.reader.current_chapter,
             self.current_page,
-            "Bookmark"
+            f"{chapter_title} (Page {self.current_page + 1})"
         )
 
         self.refresh_bookmarks()

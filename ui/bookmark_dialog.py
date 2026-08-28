@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
 class BookmarkDialog(QDialog):
     def __init__(self, bookmarks, parent=None):
         super().__init__(parent)
-
         self.selected_bookmark = None
 
         self.setWindowTitle("Bookmarks")
@@ -20,7 +19,8 @@ class BookmarkDialog(QDialog):
         self.list_widget = QListWidget()
 
         for bookmark in bookmarks:
-            self.list_widget.addItem(f"{bookmark['id']} | Chapter {bookmark['chapter']}")
+            # self.list_widget.addItem(f"{bookmark['id']} | Chapter {bookmark['chapter']}")
+            self.list_widget.addItem(bookmark["name"])
 
         layout.addWidget(self.list_widget)
 

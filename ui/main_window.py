@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QStackedWidget,
     QToolBar,
@@ -168,8 +169,31 @@ class MainWindow(
         bookmark_btn.clicked.connect(self.add_bookmark)
 
     def _create_home_page(self):
-        self.home_page = QWidget()
-        home_layout = QVBoxLayout(self.home_page)
+        # self.home_page = QWidget()
+        # home_layout = QVBoxLayout(self.home_page)
+        self.home_page = QScrollArea()
+        self.home_page.setWidgetResizable(True)
+        self.home_page.setStyleSheet("""
+        QScrollArea {
+            background-color: #fef2f1;
+            border: none;
+        }
+
+        QWidget {
+            background-color: #fef2f1;
+        }
+        """)
+
+        home_contents = QWidget()
+
+        self.home_page.setWidget(home_contents)
+
+        home_layout = QVBoxLayout(home_contents)
+        home_layout.setContentsMargins(
+            10, 5, 10, 5
+        )
+        home_layout.setSpacing(2)
+        
         library_title = QLabel("My Library")
         library_title.setStyleSheet("""
         QLabel {
@@ -182,22 +206,9 @@ class MainWindow(
 
         self.library_grid = QListWidget()
         self.currently_reading_grid = QListWidget()
+        self.finished_grid = QListWidget()
 
-        self.library_grid.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.library_grid.customContextMenuRequested.connect(self.show_library_context_menu)
-
-        # make covers look like tiles
-        self.library_grid.setViewMode(QListView.IconMode)
-        self.library_grid.setResizeMode(QListWidget.Adjust)
-        self.library_grid.setMovement(QListView.Static)
-        self.library_grid.setSpacing(25)
-        self.library_grid.setGridSize(QSize(180, 310))
-        self.library_grid.setWordWrap(True)
-
-        # self.library_grid.setIconSize(QSize(150, 220))
-        self.library_grid.setSpacing(20)
-
-        self.library_grid.setStyleSheet("""
+        grid_style = """
         QListWidget {
             background-color: #fef2f1;
             border: none;
@@ -207,21 +218,77 @@ class MainWindow(
             background-color: #fec0c4;
             border-radius: 6px;
         }
-        """)
+        """
+        section_title_style = """
+        QLabel {
+            color: #3f1219;
+            font-size: 16px;
+            font-weight: bold;
+            padding-top: 2px;
+            padding-bottom: 2px;
+        }
+        """
 
         self.library_grid.itemDoubleClicked.connect(self.library_book_selected)
         self.currently_reading_grid.itemDoubleClicked.connect(self.library_book_selected)
+        self.finished_grid.itemDoubleClicked.connect(self.library_book_selected)
 
         currently_reading_title = QLabel("Currently Reading")
         home_layout.addWidget(currently_reading_title)
         home_layout.addWidget(self.currently_reading_grid)
-
-        self.currently_reading_grid.setFlow(QListView.LeftToRight)
+        currently_reading_title.setStyleSheet(section_title_style)
         self.currently_reading_grid.setWrapping(False)
 
-        library_title = QLabel("Library")
-        home_layout.addWidget(library_title)
+        finished_title = QLabel("Unread")
+        home_layout.addWidget(finished_title)
         home_layout.addWidget(self.library_grid)
+        finished_title.setStyleSheet(section_title_style)
+        self.library_grid.setWrapping(True)
+
+        # finished_title = QLabel("Finished")
+        self.finished_button = QPushButton("▶ Finished")
+        self.finished_button.clicked.connect(self.toggle_finished_section)
+        home_layout.addWidget(self.finished_button)
+        home_layout.addWidget(self.finished_grid)
+        self.finished_grid.setWrapping(True)
+        self.finished_button.setStyleSheet("""
+        QPushButton {
+            text-align: left;
+            border: none;
+            font-size: 16px;
+            font-weight: bold;
+            background: transparent;
+            padding-top: 2px;
+            padding-bottom: 2px;
+        }
+        """)
+
+        for grid in (
+            self.currently_reading_grid,
+            self.library_grid,
+            self.finished_grid,
+        ):
+            grid.setContextMenuPolicy(Qt.CustomContextMenu)
+            grid.customContextMenuRequested.connect(self.show_library_context_menu)
+
+            grid.setViewMode(QListView.IconMode)
+            grid.setResizeMode(QListWidget.Adjust)
+            grid.setMovement(QListView.Static)
+            grid.setSpacing(20)
+
+            grid.setGridSize(QSize(150, 220))
+            # grid.setFixedHeight(275)
+
+            grid.setFlow(QListView.LeftToRight)
+            grid.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            grid.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+            grid.setWordWrap(True)
+            grid.setWrapping(True)
+            grid.setStyleSheet(grid_style)
+
+        self.finished_grid.hide()
+        self.finished_expanded = False
 
     def _create_reader_page(self):
         self.bookmark_list = QListWidget()
@@ -258,18 +325,21 @@ class MainWindow(
         self.chapter_dock = QDockWidget("Chapters")
         self.chapter_dock.setWidget(self.chapter_list)
         self.addDockWidget(Qt.LeftDockWidgetArea,self.chapter_dock)
+        self.chapter_dock.setFeatures(QDockWidget.DockWidgetMovable)
 
         self.front_matter_list = QListWidget()
         self.front_matter_list.itemDoubleClicked.connect(self.front_matter_selected)
         self.front_matter_dock = QDockWidget("Front Matter")
         self.front_matter_dock.setWidget(self.front_matter_list)
         self.addDockWidget(Qt.LeftDockWidgetArea,self.front_matter_dock)
+        self.front_matter_dock.setFeatures(QDockWidget.DockWidgetMovable)
 
         self.back_matter_list = QListWidget()
         self.back_matter_list.itemDoubleClicked.connect(self.back_matter_selected)
         self.back_matter_dock = QDockWidget("Back Matter")
         self.back_matter_dock.setWidget(self.back_matter_list)
         self.addDockWidget(Qt.LeftDockWidgetArea,self.back_matter_dock)
+        self.back_matter_dock.setFeatures(QDockWidget.DockWidgetMovable)
 
         self.splitDockWidget(
             self.front_matter_dock,
@@ -291,6 +361,7 @@ class MainWindow(
             self.bookmark_dock
         )
         self.bookmark_dock.setMaximumWidth(140)
+        self.bookmark_dock.setFeatures(QDockWidget.NoDockWidgetFeatures)
         self.bookmark_list.setStyleSheet("""
         QListWidget {
             background-color: #fad3d1;
@@ -540,6 +611,7 @@ class MainWindow(
             cover_path = self.reader.extract_cover("covers")
             book_id = self.library.add_book(path, title, cover_path)
             self.current_book_id = book_id
+            self.library.update_last_opened(book_id)
 
             book = self.library.get_book(book_id)
 

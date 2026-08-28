@@ -19,6 +19,7 @@ class BookmarkModel:
             book_id INTEGER,
             chapter INTEGER,
             page INTEGER DEFAULT 0,
+            name TEXT,
             note TEXT,
             created_at TEXT
         )
@@ -26,8 +27,10 @@ class BookmarkModel:
 
         try:
             self.conn.execute(
-                "ALTER TABLE bookmarks "
-                "ADD COLUMN created_at TEXT"
+                """
+                ALTER TABLE bookmarks
+                ADD COLUMN name TEXT
+                """
             )
         except sqlite3.OperationalError:
             pass
@@ -39,6 +42,7 @@ class BookmarkModel:
         book_id,
         chapter,
         page,
+        name,
         note=""
     ):
         created_at = datetime.now().strftime("%b %d, %Y %I:%M %p")
@@ -48,15 +52,17 @@ class BookmarkModel:
                 book_id,
                 chapter,
                 page,
+                name,
                 note,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 book_id,
                 chapter,
                 page,
+                name,
                 note,
                 created_at
             ),
@@ -95,8 +101,8 @@ class BookmarkModel:
             """
             SELECT *
             FROM bookmarks
-            WHERE book_id=?
-            ORDER BY created_at DESC
+            WHERE book_id = ?
+            ORDER BY chapter, page
             """,
-            (book_id,),
+            (book_id,)
         ).fetchall()

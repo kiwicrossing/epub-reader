@@ -1,5 +1,6 @@
 import shutil
 from pathlib import Path
+from datetime import datetime
 
 from PySide6.QtCore import Qt, QSize, QTimer
 from PySide6.QtWidgets import (
@@ -40,20 +41,21 @@ class Library:
 
     def show_library_context_menu(self, position):
         """Show the context menu for a book tile."""
-        item = self.library_grid.itemAt(position)
+        grid = self.sender()
+        if grid is None:
+            return
 
+        item = grid.itemAt(position)
         if item is None:
             return
 
         menu = QMenu(self)
-
         open_action = menu.addAction("Open Book")
         replace_cover_action = menu.addAction("Replace Cover Image...")
-
         menu.addSeparator()
-
         delete_action = menu.addAction("Delete from Library")
-        action = menu.exec(self.library_grid.mapToGlobal(position))
+
+        action = menu.exec(grid.mapToGlobal(position))
 
         if action == open_action:
             self.library_book_selected(item)
@@ -69,139 +71,323 @@ class Library:
 
         self.currently_reading_grid.clear()
         self.library_grid.clear()
+        self.finished_grid.clear()
 
         covers_dir = Path("covers")
         covers_dir.mkdir(exist_ok=True)
 
+        currently_reading = []
+        other_books = []
+        finished_books = []
+
+        #
+        # Categorize books
+        #
         for book in self.library.get_books():
-            book_id = book["id"]
-            title = book["title"]
-            cover_path = book["cover_path"]
-            pages_read = book["pages_read"]
-            total_pages = book["total_pages"]            
 
-            if not cover_path or not Path(cover_path).exists():
-                cover_path = (covers_dir / f"placeholder_{book_id}.png")
-
-                if not cover_path.exists():
-                    self.create_placeholder_cover(title, str(cover_path))
-
-            progress = (
-                book["progress_percent"]
-                if "progress_percent" in book.keys()
-                else 0
-            )
-            progress = max(0, min(100, progress or 0))
-
-
-
-            pages_read = (
-                book["pages_read"]
-                if "pages_read" in book.keys()
-                else 0
-            )
-            book_total_pages = (
-                book["total_pages"]
-                if "total_pages" in book.keys()
-                else 0
+            progress = max(
+                0,
+                min(100, book["progress_percent"] or 0)
             )
 
-            #
-            # QListWidget item
-            #
-            item = QListWidgetItem()
-            item.setData(Qt.UserRole, book_id)
-            item.setSizeHint(QSize(180, 300))
-            # self.library_grid.addItem(item)
-            if 0 < progress < 100:
-                target = self.currently_reading_grid
-            else:
-                target = self.library_grid
+            if progress >= 100:
+                finished_books.append(book)
+            elif progress > 1:
+                currently_reading.append(book)
+            else: 
+                other_books.append(book)
 
-            target.addItem(item)
+        #
+        # Sort currently reading by last opened
+        #
+        currently_reading.sort(
+            key=lambda book: (
+                book["last_opened"] or ""
+            ),
+            reverse=True
+        )
 
-            #
-            # Custom book tile
-            #
-            tile = QWidget()
-            tile.setObjectName("bookTile")
-
-            tile_layout = QVBoxLayout(tile)
-            tile_layout.setContentsMargins(
-                8,
-                8,
-                8,
-                8
+        #
+        # Render shelves
+        #
+        for book in currently_reading:
+            self._render_book_tile(
+                book,
+                self.currently_reading_grid,
+                covers_dir
             )
-            tile_layout.setSpacing(5)
 
-            #
-            # Cover
-            #
-            cover_label = QLabel()
-            cover_label.setAlignment(Qt.AlignCenter)
-            cover_label.setFixedSize(150, 220)
+        for book in other_books:
+            self._render_book_tile(
+                book,
+                self.library_grid,
+                covers_dir
+            )
 
-            cover_pixmap = QPixmap(str(cover_path))
+        for book in finished_books:
+            self._render_book_tile(
+                book,
+                self.finished_grid,
+                covers_dir
+            )
 
-            if not cover_pixmap.isNull():
-                cover_label.setPixmap(
-                    cover_pixmap.scaled(
-                        150,
-                        220,
-                        Qt.KeepAspectRatio,
-                        Qt.SmoothTransformation
-                    )
+        self.finished_button.setText(f"▶ Finished ({len(finished_books)})")
+
+    def _render_book_tile(
+        self,
+        book,
+        target,
+        covers_dir
+    ):
+        """Render a single book tile."""
+
+        book_id = book["id"]
+        title = book["title"]
+
+        cover_path = book["cover_path"]
+        finished_label = None
+
+        if (
+            not cover_path or
+            not Path(cover_path).exists()
+        ):
+            cover_path = (
+                covers_dir /
+                f"placeholder_{book_id}.png"
+            )
+
+            if not cover_path.exists():
+                self.create_placeholder_cover(
+                    title,
+                    str(cover_path)
                 )
 
-            #
-            # Title
-            #
-            title_label = QLabel(title)
-            title_label.setAlignment(Qt.AlignCenter)
-            title_label.setWordWrap(True)
-            title_label.setMaximumHeight(38)
-            title_label.setToolTip(title)
+        progress = max(
+            0,
+            min(
+                100,
+                (
+                    book["progress_percent"]
+                    if "progress_percent" in book.keys()
+                    else 0
+                ) or 0
+            )
+        )
 
-            #
-            # Progress bar
-            #
-            progress_bar = QProgressBar()
-            progress_bar.setRange(0, 100)
-            progress_bar.setValue(progress)
-            progress_bar.setFormat(f"{progress}%")
-            progress_bar.setTextVisible(True)
-            progress_bar.setFixedHeight(14)
+        if progress >= 100:
+            finished_label = QLabel("✓ Finished")
 
-            if book_total_pages > 0:
-                progress_bar.setToolTip(
-                    f"{pages_read:,} / "
-                    f"{book_total_pages:,} pages read"
-                )
-            else:
-                progress_bar.setToolTip(f"{progress}% complete")
+            finished_label.setAlignment(Qt.AlignCenter)
 
-            progress_bar.setStyleSheet("""
-                QProgressBar {
-                    border: 1px solid #fad3d1;
-                    border-radius: 6px;
-                    background-color: #fce2e1;
-                    color: #3f1219;
-                    font-size: 9px;
-                    text-align: center;
-                }
-
-                QProgressBar::chunk {
-                    background-color: #d98791;
-                    border-radius: 5px;
+            finished_label.setStyleSheet("""
+                QLabel {
+                    color: #4f8a5b;
+                    font-size: 10px;
+                    font-weight: bold;
                 }
             """)
 
-            tile_layout.addWidget(cover_label, alignment=Qt.AlignCenter)
-            tile_layout.addWidget(title_label)
+        pages_read = book["pages_read"]
+        book_total_pages = book["total_pages"]
+
+        #
+        # QListWidget Item
+        #
+        item = QListWidgetItem()
+
+        item.setData(
+            Qt.UserRole,
+            book_id
+        )
+
+        item.setSizeHint(
+            QSize(150, 220)
+        )
+
+        target.addItem(item)
+
+        #
+        # Tile Widget
+        #
+        tile = QWidget()
+        tile.setObjectName("bookTile")
+
+        tile_layout = QVBoxLayout(tile)
+
+        tile_layout.setContentsMargins(
+            2, 2, 2, 2
+        )
+
+        tile_layout.setSpacing(1)
+
+        #
+        # Cover
+        #
+        cover_label = QLabel()
+
+        cover_label.setAlignment(
+            Qt.AlignCenter
+        )
+
+        cover_label.setFixedSize(
+            120,
+            180
+        )
+
+        cover_pixmap = QPixmap(
+            str(cover_path)
+        )
+
+        if not cover_pixmap.isNull():
+            cover_label.setPixmap(
+                cover_pixmap.scaled(
+                    150,
+                    220,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation
+                )
+            )
+
+        #
+        # Title
+        #
+        title_label = QLabel(title)
+
+        last_opened_label = None
+
+        if (target == self.currently_reading_grid):
+            last_opened_label = QLabel(
+                self.format_last_opened(book["last_opened"])
+            )
+
+            last_opened_label.setAlignment(Qt.AlignCenter)
+            last_opened_label.setStyleSheet("""
+                QLabel {
+                    color: #8d4a58;
+                    font-size: 10px;
+                }
+            """)
+
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setWordWrap(True)
+        title_label.setMaximumHeight(38)
+        title_label.setToolTip(title)
+
+        #
+        # Progress Bar
+        #
+        progress_bar = QProgressBar()
+
+        progress_bar.setRange(
+            0,
+            100
+        )
+
+        progress_bar.setValue(progress)
+
+        progress_bar.setFormat(
+            f"{progress}%"
+        )
+
+        progress_bar.setTextVisible(True)
+
+        progress_bar.setFixedHeight(14)
+
+        if book_total_pages > 0:
+            progress_bar.setToolTip(
+                f"{pages_read:,} / "
+                f"{book_total_pages:,} pages read"
+            )
+        else:
+            progress_bar.setToolTip(
+                f"{progress}% complete"
+            )
+
+        progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #fad3d1;
+                border-radius: 6px;
+                background-color: #fce2e1;
+                color: #3f1219;
+                font-size: 9px;
+                text-align: center;
+            }
+
+            QProgressBar::chunk {
+                background-color: #d98791;
+                border-radius: 5px;
+            }
+        """)
+
+        tile_layout.addWidget(
+            cover_label,
+            alignment=Qt.AlignCenter
+        )
+        tile_layout.addWidget(title_label)
+
+        if last_opened_label:
+            tile_layout.addWidget(last_opened_label)
+        if finished_label:
+            tile_layout.addWidget(finished_label)
+
+        if progress < 100:
             tile_layout.addWidget(progress_bar)
 
-            target.setItemWidget(item, tile)
+        target.setItemWidget(item, tile)
+
+    def toggle_finished_section(self):
+        """Show or hide finished books."""
+
+        self.finished_expanded = (
+            not self.finished_expanded
+        )
+
+        if self.finished_expanded:
+            self.finished_grid.show()
+
+            self.finished_button.setText(
+                "▼ Finished"
+            )
+
+        else:
+            self.finished_grid.hide()
+
+            self.finished_button.setText(
+                "▶ Finished"
+            )
+
+    def format_last_opened(self, last_opened):
+        if not last_opened:
+            return "Never opened"
+
+        try:
+            opened = datetime.fromisoformat(
+                last_opened
+            )
+
+            now = datetime.now()
+
+            delta = now - opened
+
+            if delta.days == 0:
+                return "Opened today"
+
+            if delta.days == 1:
+                return "Opened yesterday"
+
+            if delta.days < 7:
+                return (
+                    f"Opened "
+                    f"{delta.days} days ago"
+                )
+
+            return (
+                "Opened "
+                + opened.strftime("%b %d")
+            )
+
+        except Exception:
+            return "Recently opened"
 
     def open_book(self):
         """Open a file picker and load the selected EPUB."""

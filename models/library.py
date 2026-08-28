@@ -1,5 +1,6 @@
 import sqlite3
 from pathlib import Path
+from datetime import datetime
 
 DB_PATH = Path("data/app.db")
 
@@ -24,7 +25,8 @@ class LibraryModel:
             last_page INTEGER DEFAULT 0,
             progress_percent INTEGER DEFAULT 0,
             pages_read INTEGER DEFAULT 0,
-            total_pages INTEGER DEFAULT 0
+            total_pages INTEGER DEFAULT 0,
+            last_opened TEXT
         )
         """)
 
@@ -51,7 +53,12 @@ class LibraryModel:
         try:
             self.conn.execute("""ALTER TABLE books  ADD COLUMN total_pages INTEGER DEFAULT 0""")
         except sqlite3.OperationalError:
-                pass
+            pass
+
+        try:
+            self.conn.execute("""ALTER TABLE books ADD COLUMN last_opened TEXT""")
+        except sqlite3.OperationalError:
+            pass
 
         self.conn.commit()
 
@@ -159,6 +166,21 @@ class LibraryModel:
                 total_pages,
                 book_id
             ),
+        )
+
+        self.conn.commit()
+
+    def update_last_opened(self, book_id):
+        self.conn.execute(
+            """
+            UPDATE books
+            SET last_opened = ?
+            WHERE id = ?
+            """,
+            (
+                datetime.now().isoformat(),
+                book_id
+            )
         )
 
         self.conn.commit()
