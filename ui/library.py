@@ -522,7 +522,7 @@ class Library:
             self,
             "Select Cover Image",
             "",
-            "PNG Images (*.png, *jpg, *.jpeg, *.webp)"
+            "Images (*.png *jpg *.jpeg *.webp)"
         )
 
         if not filename:

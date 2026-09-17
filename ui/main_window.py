@@ -341,8 +341,20 @@ class MainWindow(
         self.addDockWidget(Qt.LeftDockWidgetArea,self.back_matter_dock)
         self.back_matter_dock.setFeatures(QDockWidget.DockWidgetMovable)
 
+        # Front Matter
+        # ------------
+        # Chapters
+        # ------------
+        # Back Matter
+
         self.splitDockWidget(
             self.front_matter_dock,
+            self.chapter_dock,
+            Qt.Vertical
+        )
+
+        self.splitDockWidget(
+            self.chapter_dock,
             self.back_matter_dock,
             Qt.Vertical
         )

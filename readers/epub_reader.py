@@ -198,15 +198,42 @@ class EpubReader:
     def _classify_section(
         self,
         title,
+        text,
+        html,
         index,
         total_sections,
         epub_type=None,
+        next_title=None,
     ):
-        # 1. EPUB metadata
-        if epub_type == "frontmatter":
-            return "front"
+        # TOC page
+        if self.ml_classifier.is_toc_page(title, text):
+            return {"section": "front", "title": "Table of Contents",}
+        
+        # Acknowledgments
+        if self.ml_classifier.is_acknowledgments_page(title, text):
+            return {"section": "back", "title": "Acknowledgments"}
+        
+        # About the publisher
+        if self.ml_classifier.is_about_publisher_page(title, text):
+            return {"section": "back", "title": "About the Publisher"}
+        
+        # Copyright page
+        if self.ml_classifier.is_copyright_page(title, text):
+            return {"section": "front", "title": "Copyright",}
 
-        # 2. Strong rules
+        # Dedication page
+        if self.ml_classifier.is_dedication_page(title, text, index, total_sections):
+            return {"section": "front", "title": "Dedication",}
+        
+        # Quotes
+        if self.ml_classifier.is_quote(title, text, next_title, index, total_sections):
+            return {"section": "front", "title": "Quote",}
+        
+        # EPUB metadata
+        if epub_type == "frontmatter":
+            return {"section": "front", "title": title,}
+
+        # Front/back rules
         result = self._classify_rules(
             title,
             index,
@@ -214,10 +241,14 @@ class EpubReader:
         )
 
         if result is not None:
-            return result
+            return {"section": result, "title": title,}
 
-        # 3. ML fallback
-        prediction = self.ml_classifier.predict(title)
+        # Long content = chapter
+        if len(text.split()) > 500:
+            return {"section": "chapter", "title": title,}
+
+        # ML fallback
+        prediction = self.ml_classifier.predict(title, text)
         return prediction
 
 
@@ -280,6 +311,12 @@ class EpubReader:
                 errors="ignore"
             )
 
+            soup = BeautifulSoup(html, "html.parser")
+            text_content = soup.get_text(
+                separator=" ",
+                strip=True
+            )
+
             filename = item.get_name()
 
             filename_lower = filename.lower()
@@ -306,17 +343,26 @@ class EpubReader:
 
                 title = self._filename_to_title(item.get_name())
 
-            entry = {
-                "title": title,
-                "content": html
-            }
-
-            section_type = self._classify_section(
+            classification = self._classify_section(
                 title=title,
+                text=text_content,
+                html=html,
                 index=index,
                 total_sections=total_sections,
                 epub_type=None,  # add metadata detection later
             )
+            section_type = classification["section"]
+
+            print( # debugging
+                f"{title} -> {section_type}"
+            )
+            if section_type == "junk":
+                continue
+
+            entry = {
+                "title": classification["title"],
+                "content": html
+            }
 
             if section_type == "front":
                 self.front_matter.append(entry)
