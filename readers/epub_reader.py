@@ -353,9 +353,9 @@ class EpubReader:
             )
             section_type = classification["section"]
 
-            print( # debugging
-                f"{title} -> {section_type}"
-            )
+            # print( # debugging
+            #     f"{title} -> {section_type}"
+            # )
             if section_type == "junk":
                 continue
 
