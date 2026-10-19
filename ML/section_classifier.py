@@ -511,9 +511,9 @@ class SectionClassifier:
         section = self.model.classes_[best_idx]
         confidence = probabilities[best_idx]
 
-        print(
-            f"ML: {title} -> {section} ({confidence:.2f})"
-        )
+        # print(
+        #     f"ML: {title} -> {section} ({confidence:.2f})"
+        # )
 
         return {
             "section": section,

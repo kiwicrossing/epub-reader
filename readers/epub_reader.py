@@ -17,8 +17,6 @@ class EpubReader:
 
         self.book = epub.read_epub(file_path)
 
-        cover_item = self.book.get_item_with_id("cover")
-
         self.title = self._extract_title()
 
         self.ml_classifier = SectionClassifier()
@@ -59,12 +57,12 @@ class EpubReader:
 
         return filename.title()
 
-    def _extract_section_title(self, html, filename):
+    def _extract_section_title(self, soup: BeautifulSoup, filename):
         """
         Try progressively smarter ways to find a title.
         """
 
-        soup = BeautifulSoup(html, "html.parser")
+        # soup = BeautifulSoup(html, "html.parser")
 
         # Try h1-h3 first
         for tag in ("h1", "h2", "h3"):
@@ -111,15 +109,7 @@ class EpubReader:
                 item = self.book.get_item_with_id(cover_id)
 
                 if item:
-                    path = os.path.join(
-                        output_dir,
-                        f"{self.title}.jpg"
-                    )
-
-                    with open(path, "wb") as f:
-                        f.write(item.get_content())
-
-                    return path
+                    return self._save_image_item(item, output_dir)
 
         # Method 2: Find image named "cover"
         for item in self.book.get_items():
@@ -131,32 +121,26 @@ class EpubReader:
                 and
                 item.media_type.startswith("image/")
             ):
-                path = os.path.join(
-                    output_dir,
-                    f"{self.title}.jpg"
-                )
-
-                with open(path, "wb") as f:
-                    f.write(item.get_content())
-
-                return path
+                return self._save_image_item(item, output_dir)
 
         # Method 3: First image in the EPUB
         for item in self.book.get_items():
 
             if item.media_type.startswith("image/"):
-                path = os.path.join(
-                    output_dir,
-                    f"{self.title}.jpg"
-                )
-
-                with open(path, "wb") as f:
-                    f.write(item.get_content())
-
-                return path
+                return self._save_image_item(item, output_dir)
 
         return None
 
+    def _save_image_item(self, item, output_dir):
+        path = os.path.join(
+            output_dir,
+            f"{self.title}.jpg"
+        )
+
+        with open(path, "wb") as f:
+            f.write(item.get_content())
+
+        return path
 
     def _is_chapter_title(self, title):
         """Classification of chapters."""
@@ -167,6 +151,8 @@ class EpubReader:
             r"^part\s+[ivxlcdm\d]+$",
             r"^book\s+\w+$",
         ]
+        if not title:
+            return False
         title = title.strip().lower()
 
         for pattern in CHAPTER_PATTERNS:
@@ -175,31 +161,36 @@ class EpubReader:
 
         return False
 
-    def chapter_confidence(title):
-        """Confidence score that is chapter."""
-        title = title.lower().strip()
+    def _get_section_info(self, item):
+        html = item.get_content().decode(
+            "utf-8",
+            errors="ignore"
+        )
 
-        score = 0
+        soup = BeautifulSoup(html, "html.parser")
 
-        if re.match(r"^chapter\s+\w+", title):
-            score += 10
+        text = soup.get_text(
+            separator=" ",
+            strip=True
+        )
 
-        if re.match(r"^\d+$", title):
-            score += 8
+        title = self._extract_section_title(
+            soup,
+            item.get_name()
+        )
 
-        if len(title.split()) <= 2:
-            score -= 2
-
-        if title in FRONT_MATTER_WORDS:
-            score -= 20
-
-        return score
+        return {
+            "item": item,
+            "html": html,
+            "soup": soup,
+            "text": text,
+            "title": title,
+        }
 
     def _classify_section(
         self,
         title,
         text,
-        html,
         index,
         total_sections,
         epub_type=None,
@@ -234,11 +225,7 @@ class EpubReader:
             return {"section": "front", "title": title,}
 
         # Front/back rules
-        result = self._classify_rules(
-            title,
-            index,
-            total_sections,
-        )
+        result = self._classify_rules(title)
 
         if result is not None:
             return {"section": result, "title": title,}
@@ -252,12 +239,9 @@ class EpubReader:
         return prediction
 
 
-    def _classify_rules(
-        self,
-        title,
-        index,
-        total_sections,
-    ):
+    def _classify_rules(self, title,):
+        if not title:
+            return None
         title_lower = title.lower().strip()
 
         front_words = {
@@ -302,37 +286,28 @@ class EpubReader:
             if item.get_type() == ITEM_DOCUMENT
         ]
 
-        total_sections = len(documents)
+        sections = [
+            self._get_section_info(item)
+            for item in documents
+        ]
 
-        for index, item in enumerate(documents):
+        total_sections = len(sections)
 
-            html = item.get_content().decode(
-                "utf-8",
-                errors="ignore"
-            )
+        for index, section in enumerate(sections):
+            html = section["html"]
+            text_content = section["text"]
 
-            soup = BeautifulSoup(html, "html.parser")
-            text_content = soup.get_text(
-                separator=" ",
-                strip=True
-            )
-
-            filename = item.get_name()
-
+            filename = section["item"].get_name()
             filename_lower = filename.lower()
 
             if (
                 "index_split" in filename_lower
-                or "nav" in filename_lower
+                # or "nav" in filename_lower
                 or "toc" in filename_lower
             ):
                 continue
 
-            title = self._extract_section_title(
-                html,
-                filename
-            )
-
+            title = section["title"]
 
             # Skip empty navigation pages
             if not title.strip():
@@ -341,15 +316,21 @@ class EpubReader:
                 if len(clean_text) < 100:
                     continue
 
-                title = self._filename_to_title(item.get_name())
+                title = self._filename_to_title(filename)
+
+            next_title = (
+                sections[index + 1]["title"]
+                if index + 1 < len(sections)
+                else None
+            )
 
             classification = self._classify_section(
                 title=title,
                 text=text_content,
-                html=html,
                 index=index,
                 total_sections=total_sections,
                 epub_type=None,  # add metadata detection later
+                next_title=next_title,
             )
             section_type = classification["section"]
 
